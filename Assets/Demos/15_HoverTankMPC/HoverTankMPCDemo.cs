@@ -108,8 +108,12 @@ namespace LinearAlgebraDemos
         [Range(500f, 6000f)] public float rollInertia = 2100f;
         [Range(500f, 8000f)] public float pitchInertia = 4600f;
         [Range(500f, 12000f)] public float yawInertia = 6500f;
-        [Tooltip("Prediction stages. The horizon is this times the fixed timestep, and it is how far ahead the terrain preview and the anti-collision rows can see. CONSTRUCTION-TIME: changing it during play does nothing, since the condensed horizon is built once.")]
-        [Range(5, 40)] public int horizon = 25;
+        [Tooltip("Prediction stages. Lookahead is this times the prediction step. Stages are the EXPENSIVE axis -- they set the condensed problem size and the soft-row count -- so buy lookahead with the step size first. CONSTRUCTION-TIME: changing it during play does nothing, since the condensed horizon is built once.")]
+        [Range(5, 40)] public int horizon = 35;
+        [Tooltip("Prediction step, seconds. Lookahead is horizon times this, and it costs NOTHING to enlarge, unlike adding stages. Raising it above the fixed timestep degrades the warm start, since MPC.solve shifts the plan one stage per solve -- watch activeSetChanges on the panel. CONSTRUCTION-TIME.")]
+        [Range(0.01f, 0.12f)] public float predictStep = 0.02f;
+        [Tooltip("Condensed-QP pivot budget per step. A realtime loop must bound its solver: the shipped horizon settles at ~5 pivots, so this never binds in normal flight, but it is what stops a hard step from running long and dropping the frame. 0 takes the library default, which is unbounded in frame-time terms.")]
+        [Range(0, 400)] public int mpcMaxIter = 50;
         [Tooltip("Weight on forward/lateral displacement and heading. Small on purpose: these are pure integrator modes, and a weight of exactly zero would leave them undetectable and the terminal Riccati solve ill-posed. Reads physically as gentle station-keeping, not as tracking.")]
         [Range(0.001f, 5f)] public float qPos = 0.05f;
         [Range(0.1f, 100f)] public float qVel = 12f;
@@ -241,7 +245,10 @@ namespace LinearAlgebraDemos
         float clearanceError, trueSlopeDeg;
 
         bool hoverDivergedLogged, allocFailedLogged, estimatorFailedLogged;
-        float estMs, ctrlMs;
+        float estMs, ctrlMs, rebuildMs;
+        /// <summary>What the live horizon was actually condensed at, so a retune is detectable.</summary>
+        int builtHorizon;
+        float builtPredictStep;
 
         void Start()
         {
@@ -300,7 +307,9 @@ namespace LinearAlgebraDemos
         /// </summary>
         void BuildMpc()
         {
-            float dt = Time.fixedDeltaTime;
+            float dt = predictStep;
+            builtHorizon = horizon;
+            builtPredictStep = predictStep;
 
             BuildMpcModel(dt, qPos, qVel, qVert, qVertRate, qTilt, qTiltRate, qYawRate, rLinear, rAngular,
                           Allocator.Temp, out var A, out var B, out var Q, out var R);
@@ -352,6 +361,26 @@ namespace LinearAlgebraDemos
             mpcSoft = new NativeArray<float>(SoftRows, Allocator.Persistent);
             mpcOut = new NativeArray<MPCInfo>(1, Allocator.Persistent);
             previewOut = new NativeArray<float>(4, Allocator.Persistent);
+        }
+
+        /// <summary>
+        /// Rebuilds the horizon when <see cref="horizon"/> or <see cref="predictStep"/> has been
+        /// changed, and reports what it cost. Condensing is a one-off of a few milliseconds — nothing
+        /// as the answer to a slider drag, and unaffordable only if it were per step, which is exactly
+        /// why the model is LTI. The warm-start plan does not survive: the new horizon has a different
+        /// shape, so the next solve is a cold one.
+        /// </summary>
+        void RebuildMpcIfRetuned()
+        {
+            if (horizon == builtHorizon && predictStep == builtPredictStep) return;
+
+            var watch = Stopwatch.StartNew();
+            mpc.Dispose();
+            mpcX0.Dispose(); mpcRef.Dispose(); mpcU0.Dispose(); mpcSoft.Dispose();
+            mpcOut.Dispose(); previewOut.Dispose();
+            BuildMpc();
+            watch.Stop();
+            rebuildMs = (float)watch.Elapsed.TotalMilliseconds;
         }
 
         /// <summary>
@@ -841,14 +870,18 @@ namespace LinearAlgebraDemos
 
             // Everything the control law is handed below comes out of the estimator. Nothing here
             // reads the rigid body or the transform.
+            // A retune from the inspector or the panel lands here, between steps, never mid-solve.
+            RebuildMpcIfRetuned();
+
             var job = new HoverTankMPCStepJob
             {
                 Mpc = mpc,
                 MpcX0 = mpcX0, MpcRef = mpcRef, MpcU0 = mpcU0, MpcSoft = mpcSoft,
-                MpcOut = mpcOut, PreviewOut = previewOut, Horizon = horizon,
+                MpcOut = mpcOut, PreviewOut = previewOut, Horizon = builtHorizon,
+                MpcMaxIter = mpcMaxIter,
                 Mass = hullMass, RollInertia = rollInertia, PitchInertia = pitchInertia,
                 YawInertia = yawInertia, Gravity = -Physics.gravity.y,
-                Dt = dt,
+                Dt = dt, PredictDt = builtPredictStep,
 
                 Rpy = estimate.Rpy,
                 GroundNormal = estimate.GroundNormal,
@@ -1111,7 +1144,9 @@ namespace LinearAlgebraDemos
             DrawEstimatorPanel();
 
             MPCInfo m = mpcOut[0];
-            GUILayout.Label($"MPC: {m.status}  pivots={m.iterations}  activeSetChanges={m.activeSetChanges}  slack={m.maxSlackViolation:F3} m  horizon {horizon * Time.fixedDeltaTime:F2} s");
+            GUILayout.Label($"MPC: {m.status}  pivots={m.iterations}/{mpcMaxIter}  activeSetChanges={m.activeSetChanges}  slack={m.maxSlackViolation:F3} m");
+            GUILayout.Label($"horizon: {builtHorizon} x {builtPredictStep * 1000f:F0} ms = {builtHorizon * builtPredictStep:F2} s lookahead   nz={mpc.nz}"
+                            + (rebuildMs > 0f ? $"   (last rebuild {rebuildMs:F2} ms)" : ""));
             GUILayout.Label($"preview: ground {previewOut[1]:F1} deg along track, rising {previewOut[0]:+0.00;-0.00;0.00} m by the horizon end   —   the tank climbs before the clearance error appears");
             GUILayout.Label($"anti-collision: tightest {ProximityRig.Names[(int)previewOut[2]]} at {previewOut[3]:F1} m of room (margin {collisionMargin:F1} m)");
             GUILayout.Label($"commanded accel  fwd {mpcU0[AFwd],6:F2}  lat {mpcU0[ALat],6:F2}  vert {mpcU0[AVert],6:F2} m/s^2   roll {mpcU0[AlphaRoll],6:F2}  pitch {mpcU0[AlphaPitch],6:F2}  yaw {mpcU0[AlphaYaw],6:F2} rad/s^2");
@@ -1155,6 +1190,11 @@ namespace LinearAlgebraDemos
             maxLatSpeed = LabeledSlider($"top strafe {maxLatSpeed:F0} m/s", maxLatSpeed, 1f, 30f);
             maxYawRate = LabeledSlider($"top yaw rate {maxYawRate * Mathf.Rad2Deg:F0} deg/s", maxYawRate, 0.2f, 4f);
             collisionMargin = LabeledSlider($"collision margin {collisionMargin:F1}m", collisionMargin, 0.2f, 6f);
+            // Both rebuild the horizon on release. Stages are the expensive axis; the step size buys
+            // lookahead for free, at the cost of a warm start that shifts further than one control
+            // interval -- activeSetChanges above is where that shows up.
+            horizon = Mathf.RoundToInt(LabeledSlider($"horizon {horizon} stages", horizon, 5f, 40f));
+            predictStep = LabeledSlider($"predict step {predictStep * 1000f:F0} ms", predictStep, 0.01f, 0.12f);
             thrusters.servoMaxDeg = LabeledSlider($"gimbal range +{thrusters.servoMaxDeg:F0}deg", thrusters.servoMaxDeg, 0f, GimbalAllocation.MaxGimbalDeg);
             thrusters.servoRateDeg = LabeledSlider($"servo rate {thrusters.servoRateDeg:F0}deg/s", thrusters.servoRateDeg, 15f, 720f);
 
@@ -1333,13 +1373,25 @@ namespace LinearAlgebraDemos
         /// <summary>Length 4, the soft rows' bound in the order +fwd, -fwd, +lat, -lat.</summary>
         public NativeArray<float> MpcSoft;
         public NativeArray<MPCInfo> MpcOut;
+        /// <summary>Condensed-QP pivot budget. A realtime loop must bound its solver: exceeding this
+        /// returns the best iterate so far as <see cref="MPCStatus.MaxIterations"/>, which the warm
+        /// start keeps close to optimal, rather than running long and dropping the frame.
+        /// 0 or less takes the library's size-based default, which is NOT bounded by any frame time.</summary>
+        public int MpcMaxIter;
         /// <summary>[0] predicted terrain rise at the horizon end (m), [1] along-track slope (deg),
         /// [2] tightest soft row, [3] that row's remaining clearance (m).</summary>
         public NativeArray<float> PreviewOut;
         public int Horizon;
 
         public float Mass, RollInertia, PitchInertia, YawInertia, Gravity;
+        /// <summary>Real elapsed control step, seconds. This and this alone scales the actuator SLEW
+        /// LIMITS, which are about how far a servo can physically move before the next command.</summary>
         public float Dt;
+        /// <summary>The MPC model's own step, seconds — what a predicted stage spans, and therefore the
+        /// stage times the reference is written against. Equal to <see cref="Dt"/> unless the demo is
+        /// buying lookahead with a coarser step; conflating the two would hand the allocation actuator
+        /// authority the rig does not have.</summary>
+        public float PredictDt;
 
         // ---- the estimate this step, and nothing else ----
         /// <summary>Estimated [roll, pitch, yaw], rad.</summary>
@@ -1449,7 +1501,7 @@ namespace LinearAlgebraDemos
                 MpcRef[b + HoverTankMPCDemo.VFwd] = vFwdRef;
                 MpcRef[b + HoverTankMPCDemo.VLat] = vLatRef;
                 MpcRef[b + HoverTankMPCDemo.YawRate] = yawRateRef;
-                MpcRef[b + HoverTankMPCDemo.SVert] = climbRate * ((k + 1) * Dt) - rideError;
+                MpcRef[b + HoverTankMPCDemo.SVert] = climbRate * ((k + 1) * PredictDt) - rideError;
                 MpcRef[b + HoverTankMPCDemo.VVert] = climbRate;
             }
 
@@ -1467,9 +1519,9 @@ namespace LinearAlgebraDemos
             var x0 = new floatN(MpcX0);
             var reference = new floatN(MpcRef);
             var u0 = new floatN(MpcU0);
-            MpcOut[0] = MPC.solve(ref Mpc, in x0, in reference, ref u0);
+            MpcOut[0] = MPC.solve(ref Mpc, in x0, in reference, ref u0, MpcMaxIter);
 
-            PreviewOut[0] = climbRate * (Horizon * Dt);
+            PreviewOut[0] = climbRate * (Horizon * PredictDt);
             PreviewOut[1] = math.degrees(math.atan(slopeF));
             int tightest = 0;
             for (int i = 1; i < 4; i++) if (MpcSoft[i] < MpcSoft[tightest]) tightest = i;

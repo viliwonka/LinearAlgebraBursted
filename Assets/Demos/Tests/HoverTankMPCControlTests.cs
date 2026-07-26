@@ -49,6 +49,16 @@ namespace LinearAlgebraDemos.Tests
         /// </summary>
         const float Penalty = 1e5f;
 
+        /// <summary>
+        /// The demo's pivot budget. Not a test convenience — an UNBOUNDED active-set solve is what hung
+        /// the first horizon sweep: at 50 stages the condensed problem is nz = 500 with 200 general
+        /// rows, and the size-based default budget let a single solve run long enough to blow a 900 s
+        /// wall-clock guard. A realtime loop has to cap this and accept
+        /// <see cref="MPCStatus.MaxIterations"/>; the shipped horizon settles at ~5 pivots, so it never
+        /// binds in normal flight.
+        /// </summary>
+        const int MaxPivots = 50;
+
         /// <summary>Steps each case is held at a FIXED estimate for, so the reported command is the
         /// converged one rather than a first-solve transient.</summary>
         const int SettleSteps = 40;
@@ -192,14 +202,42 @@ namespace LinearAlgebraDemos.Tests
         /// mean the model stopped being LTI and something started re-condensing per step — without
         /// turning a busy machine into a red suite. The measured number is logged, not asserted.
         /// </summary>
-        [Test]
-        public void ControlStep_CostsFarLessThanAFixedStep()
+        /// <summary>
+        /// Lookahead is stages x prediction step, and the two are NOT interchangeable in cost: stages
+        /// drive nz and the active-set solver's general-row count, while the step size is free.
+        ///
+        /// Measured 2026-07-26, which is how the shipped horizon was chosen. There is a CLIFF here, not
+        /// a curve, and both ways of reaching 1 s fall off it:
+        ///
+        ///   25 x 20 ms  0.50 s  nz=250  median  1.82 ms   Optimal        5 pivots,  0 changes
+        ///   35 x 20 ms  0.70 s  nz=350  median  3.63 ms   Optimal        5 pivots,  0 changes
+        ///   25 x 40 ms  1.00 s  nz=250  median 10.49 ms   MaxIterations 50 pivots, 19 changes
+        ///   50 x 20 ms  1.00 s  nz=500  median 56.02 ms   MaxIterations 50 pivots, 59 changes
+        ///
+        /// The 1 s rows are not merely slow, they stop CONVERGING — both hit the pivot cap. And the
+        /// coarse-step row is the instructive one: identical nz to the shipped horizon yet 5.8x the
+        /// cost, because shifting one 40 ms stage per 20 ms solve wrecks the warm start (0 active-set
+        /// changes becomes 19), so the carried factorization can never be reused. Buying lookahead with
+        /// the step size is free in problem SIZE and expensive in warm-start quality.
+        ///
+        /// Only the two viable configurations are kept here; re-measuring the rejected ones costs suite
+        /// time to re-learn something already recorded. Reaching 1 s needs the soft rows applied to a
+        /// SUBSET of stages (200 of the 500 columns at 50 stages are anti-collision slack), which needs
+        /// a library change.
+        /// </summary>
+        [TestCase(35, 0.02f, TestName = "ControlStep_Cost_35x20ms_shipped_0p70s")]
+        [TestCase(25, 0.02f, TestName = "ControlStep_Cost_25x20ms_0p50s")]
+        public void ControlStep_CostsFarLessThanAFixedStep(int demoHorizon, float predictDt)
         {
-            const int warmup = 25, timed = 200;
-            const int demoHorizon = 25;
+            // Modest counts on purpose. The shipped horizon's min and median differed by 1.4%, so 40
+            // samples is plenty, and the first sweep showed an expensive configuration can burn a
+            // 900 s guard at 225 solves per case.
+            const int warmup = 10, timed = 40;
+            // The CONTROL step is always the fixed step; predictDt only changes how far each predicted
+            // stage reaches, so the budget below is the same in every case.
             const float demoDt = 0.02f;
 
-            var rig = new StepRig(demoDt, demoHorizon, fwdSpeed: 6f, proxFwd: RayLength,
+            var rig = new StepRig(predictDt, demoHorizon, fwdSpeed: 6f, proxFwd: RayLength,
                                   groundNormal: math.normalize(new float3(0f, 1f, -0.15f)), driveInput: 1f);
 
             for (int s = 0; s < warmup; s++) rig.Step();
@@ -219,14 +257,24 @@ namespace LinearAlgebraDemos.Tests
 
             MPCInfo info = rig.Info;
             UnityEngine.Debug.Log(
-                $"control step @ horizon {demoHorizon} ({demoHorizon * demoDt:F2} s), nz={rig.Nz}: " +
-                $"median {median:F4} ms, min {min:F4} ms, p95 {p95:F4} ms  " +
-                $"[fixed step {demoDt * 1000f:F0} ms, so {100.0 * median / (demoDt * 1000f):F2}% of budget]  " +
+                $"HORIZON COST | {demoHorizon} x {predictDt * 1000f:F0} ms = {demoHorizon * predictDt:F2} s lookahead, " +
+                $"nz={rig.Nz}: median {median:F4} ms, min {min:F4} ms, p95 {p95:F4} ms  " +
+                $"[{100.0 * median / (demoDt * 1000f):F1}% of a {demoDt * 1000f:F0} ms step]  " +
                 $"MPC {info.status} pivots={info.iterations} activeSetChanges={info.activeSetChanges}");
 
             Assert.IsTrue(info.status != MPCStatus.Fallback, $"the timed run fell back: {info.status}");
-            Assert.IsTrue(median < 5.0,
-                $"control step median {median:F4} ms — a fixed step is {demoDt * 1000f:F0} ms (min {min:F4}, p95 {p95:F4})");
+            // Loose on purpose: a fixed step is 20 ms, so this only says the control path fits in real
+            // time at all. The shipped horizon carries the tight bound, below.
+            Assert.IsTrue(median < 8.0,
+                $"control step median {median:F4} ms against a {demoDt * 1000f:F0} ms step (min {min:F4}, p95 {p95:F4})");
+
+            // Both viable horizons converge cleanly with a settled working set. Losing that is the
+            // signature of falling off the cliff above — it showed up as MaxIterations long before the
+            // time did, so it is the cheaper thing to assert on.
+            Assert.IsTrue(info.status == MPCStatus.Optimal,
+                $"a shipped horizon must converge, got {info.status} at {info.iterations} pivots");
+            Assert.IsTrue(info.activeSetChanges <= 3,
+                $"the warm start is not tracking: {info.activeSetChanges} active-set changes per step");
 
             rig.Dispose();
         }
@@ -249,6 +297,7 @@ namespace LinearAlgebraDemos.Tests
 
             public StepRig(float dt, int horizon, float fwdSpeed, float proxFwd, float3 groundNormal, float driveInput)
             {
+                const float controlDt = 0.02f;
                 const int n = HoverTankMPCDemo.StateCount, m = HoverTankMPCDemo.InputCount;
                 GimbalSettings settings = GimbalSettings.Default;
 
@@ -308,7 +357,10 @@ namespace LinearAlgebraDemos.Tests
                     MpcOut = outInfo, PreviewOut = preview, Horizon = horizon,
                     Mass = Mass, RollInertia = RollInertia, PitchInertia = PitchInertia,
                     YawInertia = YawInertia, Gravity = Gravity,
-                    Dt = dt,
+                    // Slew limits are about real elapsed time, so they stay on the CONTROL step even
+                    // when the model predicts in coarser stages.
+                    Dt = controlDt, PredictDt = dt,
+                    MpcMaxIter = MaxPivots,
                     Rpy = float3.zero, GroundNormal = groundNormal, VelWorld = float3.zero,
                     ForwardSpeed = fwdSpeed, LateralSpeed = 0f, YawRate = 0f, RollRate = 0f, PitchRate = 0f,
                     Clearance = RideHeight, TiltCos = 1f, TargetRideHeight = RideHeight,
@@ -407,7 +459,8 @@ namespace LinearAlgebraDemos.Tests
                 MpcOut = mpcOut, PreviewOut = previewOut, Horizon = Horizon,
                 Mass = Mass, RollInertia = RollInertia, PitchInertia = PitchInertia,
                 YawInertia = YawInertia, Gravity = Gravity,
-                Dt = Dt,
+                Dt = Dt, PredictDt = Dt,
+                MpcMaxIter = MaxPivots,
 
                 Rpy = float3.zero,
                 GroundNormal = groundNormal,

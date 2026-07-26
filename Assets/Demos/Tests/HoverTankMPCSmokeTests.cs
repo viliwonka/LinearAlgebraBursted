@@ -211,7 +211,8 @@ namespace LinearAlgebraDemos.Tests
                 MpcOut = mpcOut, PreviewOut = previewOut, Horizon = horizon,
                 Mass = mass, RollInertia = rollInertia, PitchInertia = pitchInertia,
                 YawInertia = 6500f, Gravity = gravity,
-                Dt = dt,
+                Dt = dt, PredictDt = dt,
+                MpcMaxIter = 50,
 
                 // At rest, on height, rolled -0.2 rad: right side down.
                 Rpy = new float3(-0.2f, 0f, 0f),
