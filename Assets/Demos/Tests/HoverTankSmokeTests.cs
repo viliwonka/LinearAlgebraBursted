@@ -7,7 +7,7 @@ using Unity.Mathematics;
 namespace LinearAlgebraDemos.Tests
 {
     /// <summary>
-    /// Headless, math-only smoke tests for HoverTankDemo's two LQR loops: build the
+    /// Headless, math-only smoke tests for HoverTankDemo's LQR loops: build the
     /// demo's exact discrete A/B/Q/R via its own static model builders
     /// (<see cref="HoverTankStepJob.BuildHoverModel"/>/<see cref="HoverTankStepJob.BuildServoModel"/>),
     /// solve for K, then simulate the LINEAR closed loop x_{k+1} = (A - B K) x_k from a
@@ -65,7 +65,7 @@ namespace LinearAlgebraDemos.Tests
         }
 
         [Test]
-        public void TurretServo_Stabilizes_From_Perturbed_State()
+        public void ServoModel_Stabilizes_From_Perturbed_State()
         {
             const int n = 2, m = 1;
 
@@ -75,7 +75,7 @@ namespace LinearAlgebraDemos.Tests
 
             var K = new floatMxN(m, n, Allocator.TempJob);
             RiccatiInfo info = LQR.lqr(in A, in B, in Q, in R, ref K);
-            Assert.IsTrue(info, $"turret servo LQR did not converge: {info.status}");
+            Assert.IsTrue(info, $"servo LQR did not converge: {info.status}");
 
             var BK = new floatMxN(n, n, Allocator.TempJob);
             Blas.dot(in B, in K, ref BK);
@@ -104,7 +104,7 @@ namespace LinearAlgebraDemos.Tests
                 steps++;
             }
 
-            Assert.IsTrue(norm < 1e-3f, $"turret servo closed loop did not decay below 1e-3 within {maxSteps} steps (||x|| = {norm})");
+            Assert.IsTrue(norm < 1e-3f, $"servo closed loop did not decay below 1e-3 within {maxSteps} steps (||x|| = {norm})");
 
             A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose();
             K.Dispose(); BK.Dispose(); Acl.Dispose();

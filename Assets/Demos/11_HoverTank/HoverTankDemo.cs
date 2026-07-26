@@ -10,20 +10,32 @@ using UnityEngine;
 namespace LinearAlgebraDemos
 {
     /// <summary>
-    /// Hover tank (BF2142-style) on FOUR SERVO THRUSTERS, each with its own servo angle and throttle.
-    /// Three layers run per fixed step:
+    /// Player-driven hover tank (BF2142-style) on FOUR SERVO THRUSTERS, each with its own servo angle
+    /// and throttle. Drop on an empty GameObject and press play.
+    ///
+    /// W/S drive · A/D yaw the hull · Mouse Y elevates the gun · SPACE air brake.
+    ///
+    /// The gun is FIXED in traverse — elevation only — so azimuth is the hull's job, and every axis
+    /// except elevation reaches the thrusters through one control-allocation solve:
     ///
     /// 1. A 6-state discrete LQR (height error, vertical velocity, roll, roll rate, pitch, pitch rate)
     ///    sensed from 4 corner-down raycasts, producing vertical/roll/pitch acceleration commands.
-    /// 2. A control-allocation QP that turns those commands — plus the driver's forward and yaw demand
-    ///    — into the 8 thruster controls, under servo range/rate and thrust range/rate limits. See
+    /// 2. A control-allocation QP that turns those commands plus the driver's forward/yaw/brake demand
+    ///    into the 8 thruster controls, under servo range/rate and thrust range/rate limits. See
     ///    <see cref="ThrusterAllocation"/>: 8 controls against 5 reachable wrench components, so the
     ///    rig is over-actuated and the solve is what decides how the work is shared.
-    /// 3. Two 2-state double-integrator servo LQRs (turret yaw, barrel pitch) tracking a moving target.
+    /// 3. A 2-state double-integrator servo LQR for barrel elevation, the one channel with its own
+    ///    actuator. The mouse moves the setpoint; the LQR tracks it.
     ///
-    /// WASD is a wrench demand routed through the allocation, not a force bolted onto the hull, so the
-    /// tank drives by tilting its thrusters and the QP cancels the pitch-up torque that creates.
-    /// Self-assembles ground/hull/turret/barrel/target primitives in <see cref="Start"/> (sceneless,
+    /// <see cref="autoLay"/> optionally hands hull yaw to a second 2-state LQR that lays the gun onto
+    /// <see cref="target"/> through the same allocation — off by default, and the driver's stick takes
+    /// the axis back the moment it moves.
+    ///
+    /// There is no lateral force anywhere in the rig: every thrust vector lies in a forward-up plane,
+    /// so their sum does too. Sideways motion is reachable only through roll, quadcopter-style, which
+    /// is why there is no strafe binding and why the air brake only opposes along-track speed.
+    ///
+    /// Self-assembles ground, hull, gun, target and a chase camera in <see cref="Start"/> (sceneless,
     /// like the other demos).
     /// </summary>
     public class HoverTankDemo : MonoBehaviour
@@ -49,14 +61,16 @@ namespace LinearAlgebraDemos
         [Header("Servo thrusters (allocated by QP)")]
         public ThrusterSettings thrusters = ThrusterSettings.Default;
 
-        [Header("Turret servo (yaw)")]
-        public Transform target;
-        [Range(1f, 200f)] public float qYawAngle = 60f;
-        [Range(0.1f, 50f)] public float qYawRate = 8f;
-        [Range(0.01f, 10f)] public float rYawTorque = 0.3f;
-        [Range(1f, 30f)] public float maxYawAccel = 8f;
+        [Header("Driver demand (routed through the allocation)")]
+        [Range(1000f, 40000f)] public float driveForce = 9000f;
+        [Range(1000f, 40000f)] public float steerTorque = 9000f;
+        [Tooltip("Peak braking force. Kept below driveForce so the brake cannot starve attitude control.")]
+        [Range(1000f, 30000f)] public float brakeForce = 8000f;
+        [Tooltip("Braking force per m/s of along-track speed, so the brake eases off as the tank slows.")]
+        [Range(200f, 20000f)] public float brakeGain = 3000f;
 
-        [Header("Barrel servo (pitch)")]
+        [Header("Gun elevation (mouse Y -> servo LQR)")]
+        [Range(0.5f, 20f)] public float mouseSensitivity = 4f;
         [Range(1f, 200f)] public float qPitchAngle = 60f;
         [Range(0.1f, 50f)] public float qPitchRate = 8f;
         [Range(0.01f, 10f)] public float rPitchTorque = 0.3f;
@@ -64,9 +78,21 @@ namespace LinearAlgebraDemos
         [Range(-30f, 10f)] public float barrelMinPitchDeg = -5f;
         [Range(10f, 85f)] public float barrelMaxPitchDeg = 60f;
 
-        [Header("Driver demand (routed through the allocation)")]
-        [Range(1000f, 40000f)] public float driveForce = 9000f;
-        [Range(1000f, 40000f)] public float steerTorque = 9000f;
+        [Header("Auto-lay (optional: hull yaw tracks the target)")]
+        [Tooltip("Off by default. A/D always takes the yaw axis back.")]
+        public bool autoLay = false;
+        public Transform target;
+        [Range(500f, 12000f)] public float yawInertia = 6500f;   // converts the LQR's yaw accel to a torque demand
+        [Range(1f, 200f)] public float qLayAngle = 30f;
+        [Range(0.1f, 50f)] public float qLayRate = 12f;
+        [Range(0.01f, 10f)] public float rLayTorque = 1f;
+        [Range(0.1f, 5f)] public float maxLayAccel = 0.8f;      // rad/s^2, kept near what the rig can actually deliver
+        [Range(0.5f, 15f)] public float onTargetDeg = 2f;
+
+        [Header("Chase camera")]
+        [Range(3f, 30f)] public float camDistance = 12f;
+        [Range(1f, 15f)] public float camHeight = 5f;
+        [Range(1f, 30f)] public float camLag = 6f;
 
         [Header("Auto target orbit (used when target is unassigned)")]
         public bool autoOrbitTarget = true;
@@ -75,11 +101,14 @@ namespace LinearAlgebraDemos
         [Range(0.05f, 2f)] public float orbitSpeed = 0.5f;
 
         static readonly string[] MountNames = { "FL", "FR", "BL", "BR" };
+        static readonly Rect PanelRect = new Rect(10, 10, 520, 560);
 
         // self-assembled scene objects (Start)
-        GameObject groundGO, hullGO, turretGO, barrelGO, autoTargetGO;
+        GameObject groundGO, hullGO, hullVisualGO, barrelPivotGO, barrelGO, autoTargetGO;
+        readonly Transform[] thrusterPivots = new Transform[4];
+        Camera chaseCam;
         Rigidbody rb;
-        Vector3[] cornerLocal;     // FL, FR, BL, BR — METRIC offsets from the hull center of mass
+        Vector3[] cornerLocal;     // FL, FR, BL, BR — metric offsets from the hull center of mass
         float cornerDX, cornerDZ;  // horizontal corner offsets shared by sensing + allocation
         float4 mountX, mountY, mountZ;
         float mountArm;            // lever arm the torque residual scale is measured against
@@ -87,6 +116,9 @@ namespace LinearAlgebraDemos
         Vector3 spawnPosition;
         Vector3 orbitCenter;
         float orbitAngle;
+        float elevationDeg;        // mouse-driven setpoint the barrel LQR tracks
+        float layErrorRad;         // cached for the readout; the job consumes it as an input
+        float lastSteer;           // cached for the readout: who owned the yaw axis this step
 
         // hover loop buffers (persistent — never allocated inside the job)
         floatMxN hoverK;
@@ -101,15 +133,14 @@ namespace LinearAlgebraDemos
         NativeArray<QPInfo> allocOut;
         NativeArray<float> wrenchOut;     // 5 demanded then 5 achieved (N, N*m)
 
-        // turret / barrel servo buffers
-        floatMxN turretK, barrelK;
-        floatLQRState turretLqr, barrelLqr;
-        NativeArray<float> turretState;   // [0] yaw   (rad) [1] yaw rate
+        // gun-laying / barrel servo buffers
+        floatMxN layK, barrelK;
+        floatLQRState layLqr, barrelLqr;
         NativeArray<float> barrelState;   // [0] pitch (rad, +up) [1] pitch rate
-        NativeArray<float> turretOut;     // [0] converged
+        NativeArray<float> layOut;        // [0] converged
         NativeArray<float> barrelOut;     // [0] converged
 
-        bool hoverDivergedLogged, allocFailedLogged, turretDivergedLogged, barrelDivergedLogged;
+        bool hoverDivergedLogged, allocFailedLogged, layDivergedLogged, barrelDivergedLogged;
         float frameMs;
 
         void Start()
@@ -127,13 +158,12 @@ namespace LinearAlgebraDemos
             allocOut = new NativeArray<QPInfo>(1, Allocator.Persistent);
             wrenchOut = new NativeArray<float>(10, Allocator.Persistent);
 
-            turretK = new floatMxN(1, 2, Allocator.Persistent);
+            layK = new floatMxN(1, 2, Allocator.Persistent);
             barrelK = new floatMxN(1, 2, Allocator.Persistent);
-            turretLqr = new floatLQRState(2, Allocator.Persistent);
+            layLqr = new floatLQRState(2, Allocator.Persistent);
             barrelLqr = new floatLQRState(2, Allocator.Persistent);
-            turretState = new NativeArray<float>(2, Allocator.Persistent);
             barrelState = new NativeArray<float>(2, Allocator.Persistent);
-            turretOut = new NativeArray<float>(1, Allocator.Persistent);
+            layOut = new NativeArray<float>(1, Allocator.Persistent);
             barrelOut = new NativeArray<float>(1, Allocator.Persistent);
 
             for (int i = 0; i < 4; i++) prevCornerHeights[i] = targetRideHeight;
@@ -153,13 +183,12 @@ namespace LinearAlgebraDemos
             if (allocOut.IsCreated) allocOut.Dispose();
             if (wrenchOut.IsCreated) wrenchOut.Dispose();
 
-            if (turretK.IsCreated) turretK.Dispose();
+            if (layK.IsCreated) layK.Dispose();
             if (barrelK.IsCreated) barrelK.Dispose();
-            turretLqr.Dispose();
+            layLqr.Dispose();
             barrelLqr.Dispose();
-            if (turretState.IsCreated) turretState.Dispose();
             if (barrelState.IsCreated) barrelState.Dispose();
-            if (turretOut.IsCreated) turretOut.Dispose();
+            if (layOut.IsCreated) layOut.Dispose();
             if (barrelOut.IsCreated) barrelOut.Dispose();
         }
 
@@ -171,18 +200,26 @@ namespace LinearAlgebraDemos
             groundGO.transform.localScale = new Vector3(8f, 1f, 8f);   // 80x80 units
 
             spawnPosition = new Vector3(0f, targetRideHeight + hullHeight * 0.5f, 0f);
+            Vector3 hullSize = new Vector3(2f * hullHalfWidth, hullHeight, 2f * hullHalfLength);
 
-            hullGO = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            hullGO.name = "HoverTank_Hull";
-            hullGO.transform.localScale = new Vector3(2f * hullHalfWidth, hullHeight, 2f * hullHalfLength);
+            // The hull root carries NO scale: mounts, gun and thruster pivots hang off it in metres,
+            // and the render scale lives on the visual child only.
+            hullGO = new GameObject("HoverTank_Hull");
             hullGO.transform.position = spawnPosition;
-            hullGO.GetComponent<Renderer>().material.color = new Color(0.25f, 0.55f, 0.3f);
+            hullGO.AddComponent<BoxCollider>().size = hullSize;
 
             rb = hullGO.AddComponent<Rigidbody>();
             rb.mass = hullMass;
             rb.linearDamping = 0.05f;
             rb.angularDamping = 0.2f;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
+
+            hullVisualGO = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            hullVisualGO.name = "HoverTank_HullVisual";
+            hullVisualGO.transform.SetParent(hullGO.transform, worldPositionStays: false);
+            hullVisualGO.transform.localScale = hullSize;
+            hullVisualGO.GetComponent<Renderer>().material.color = new Color(0.25f, 0.55f, 0.3f);
+            Destroy(hullVisualGO.GetComponent<Collider>());
 
             cornerDX = hullHalfWidth * 0.9f;
             cornerDZ = hullHalfLength * 0.9f;
@@ -200,17 +237,33 @@ namespace LinearAlgebraDemos
             mountZ = new float4(cornerLocal[0].z, cornerLocal[1].z, cornerLocal[2].z, cornerLocal[3].z);
             mountArm = math.max(cornerDX, cornerDZ);
 
-            turretGO = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            turretGO.name = "HoverTank_Turret";
-            turretGO.transform.SetParent(hullGO.transform, worldPositionStays: false);
-            turretGO.transform.localScale = new Vector3(1.2f, 0.6f, 1.2f);
-            turretGO.transform.localPosition = new Vector3(0f, hullHeight * 0.5f + 0.3f, 0f);
-            turretGO.GetComponent<Renderer>().material.color = new Color(0.2f, 0.2f, 0.2f);
-            Destroy(turretGO.GetComponent<Collider>());
+            // One pivot per mount, rotated by that servo's angle every step: local +y is the thrust
+            // direction and local -y the exhaust, so the nozzle hanging below it swings the way the
+            // allocation is steering the thrust.
+            for (int i = 0; i < 4; i++)
+            {
+                var pivot = new GameObject($"HoverTank_Thruster_{MountNames[i]}");
+                pivot.transform.SetParent(hullGO.transform, worldPositionStays: false);
+                pivot.transform.localPosition = cornerLocal[i];
+                thrusterPivots[i] = pivot.transform;
+
+                var nozzle = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                nozzle.name = "Nozzle";
+                nozzle.transform.SetParent(pivot.transform, worldPositionStays: false);
+                nozzle.transform.localScale = new Vector3(0.35f, 0.7f, 0.35f);
+                nozzle.transform.localPosition = new Vector3(0f, -0.35f, 0f);
+                nozzle.GetComponent<Renderer>().material.color = new Color(0.15f, 0.15f, 0.18f);
+                Destroy(nozzle.GetComponent<Collider>());
+            }
+
+            // Fixed in traverse: the gun pivot only elevates, so azimuth is the hull's problem.
+            barrelPivotGO = new GameObject("HoverTank_BarrelPivot");
+            barrelPivotGO.transform.SetParent(hullGO.transform, worldPositionStays: false);
+            barrelPivotGO.transform.localPosition = new Vector3(0f, hullHeight * 0.5f + 0.25f, 0f);
 
             barrelGO = GameObject.CreatePrimitive(PrimitiveType.Cube);
             barrelGO.name = "HoverTank_Barrel";
-            barrelGO.transform.SetParent(turretGO.transform, worldPositionStays: false);
+            barrelGO.transform.SetParent(barrelPivotGO.transform, worldPositionStays: false);
             barrelGO.transform.localScale = new Vector3(0.3f, 0.3f, 2.5f);
             barrelGO.transform.localPosition = new Vector3(0f, 0f, 1.25f);
             barrelGO.GetComponent<Renderer>().material.color = new Color(0.1f, 0.1f, 0.1f);
@@ -227,11 +280,20 @@ namespace LinearAlgebraDemos
                 Destroy(autoTargetGO.GetComponent<Collider>());
                 autoTargetGO.transform.position = orbitCenter + new Vector3(orbitRadius, orbitHeight, 0f);
             }
+
+            // Reuse whatever camera the scene already has; only build one if there is none.
+            chaseCam = Camera.main != null ? Camera.main : FindFirstObjectByType<Camera>();
+            if (chaseCam == null)
+            {
+                var camGO = new GameObject("HoverTank_ChaseCamera");
+                chaseCam = camGO.AddComponent<Camera>();
+                if (FindFirstObjectByType<AudioListener>() == null) camGO.AddComponent<AudioListener>();
+            }
+            SnapCamera();
         }
 
-        // cornerLocal is metric; the hull cube carries a render scale, so TransformPoint would
-        // multiply the offsets by it and put the mounts (and the lever arms the allocation is
-        // solved against) outside the hull.
+        // Rotation only: the mount offsets are metric and must stay that way even if someone scales
+        // the hull root later.
         Vector3 MountWorld(int i) => hullGO.transform.position + hullGO.transform.rotation * cornerLocal[i];
 
         void ResetControls()
@@ -246,6 +308,17 @@ namespace LinearAlgebraDemos
                 controls[i] = 0f;
                 controls[4 + i] = trim;
             }
+        }
+
+        void Update()
+        {
+            // Mouse deltas are per rendered frame, so they are accumulated here rather than in
+            // FixedUpdate. The panel is full of sliders: dragging one must not also elevate the gun.
+            Vector2 cursor = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+            if (!PanelRect.Contains(cursor))
+                elevationDeg += Input.GetAxis("Mouse Y") * mouseSensitivity;
+
+            elevationDeg = Mathf.Clamp(elevationDeg, barrelMinPitchDeg, barrelMaxPitchDeg);
         }
 
         void FixedUpdate()
@@ -270,19 +343,19 @@ namespace LinearAlgebraDemos
                     ? hit.distance : rayLength;
             }
 
-            // ---- turret/barrel target direction, in hull-local space ----
-            // (falls back to holding the current aim if neither an assigned target nor the
-            // self-created one is available, e.g. a user-assigned target destroyed at runtime)
+            // ---- auto-lay: hull heading error toward the target (only consumed when armed) ----
             Transform aimTarget = target != null ? target : (autoTargetGO != null ? autoTargetGO.transform : null);
-            float desiredYaw = turretState[0];
-            float desiredPitch = barrelState[0];
+            layErrorRad = 0f;
             if (aimTarget != null)
             {
                 Vector3 localDir = hullGO.transform.InverseTransformDirection(aimTarget.position - hullGO.transform.position);
-                desiredYaw = math.atan2(localDir.x, localDir.z);
-                float horiz = math.sqrt(localDir.x * localDir.x + localDir.z * localDir.z);
-                desiredPitch = math.atan2(localDir.y, math.max(horiz, 1e-4f));
+                // Heading error is the NEGATED target bearing, so its derivative is the hull's own yaw
+                // rate and [error, rate] is exactly the double integrator BuildServoModel describes.
+                // Positive means the nose must swing left.
+                layErrorRad = -math.atan2(localDir.x, localDir.z);
             }
+
+            lastSteer = Input.GetAxis("Horizontal");
 
             var job = new HoverTankStepJob
             {
@@ -295,20 +368,26 @@ namespace LinearAlgebraDemos
                 RThrust = rThrust, RTorque = rTorque,
                 TargetRideHeight = targetRideHeight, CornerDX = cornerDX, CornerDZ = cornerDZ, Dt = dt,
 
+                LayK = layK, LayLqrState = layLqr, LayOut = layOut,
+                QLayAngle = qLayAngle, QLayRate = qLayRate, RLayTorque = rLayTorque,
+                MaxLayAccel = maxLayAccel, YawInertia = yawInertia,
+                LayError = layErrorRad,
+                LayRate = Vector3.Dot(rb.angularVelocity, hullGO.transform.up),
+                AutoLay = autoLay && aimTarget != null,
+
                 Controls = controls, AllocOut = allocOut, WrenchOut = wrenchOut,
                 Settings = thrusters, Health = thrusterHealth,
                 MountX = mountX, MountY = mountY, MountZ = mountZ, MountArm = mountArm,
-                DriveDemand = Input.GetAxis("Vertical") * driveForce,
-                YawDemand = Input.GetAxis("Horizontal") * steerTorque,
+                DriveInput = Input.GetAxis("Vertical"), DriveForce = driveForce,
+                SteerInput = lastSteer, SteerTorque = steerTorque,
+                BrakeInput = Input.GetKey(KeyCode.Space),
+                BrakeForce = brakeForce, BrakeGain = brakeGain,
+                ForwardSpeed = Vector3.Dot(rb.linearVelocity, hullGO.transform.forward),
                 TiltCos = Vector3.Dot(hullGO.transform.up, Vector3.up),
-
-                TurretState = turretState, TurretK = turretK, TurretLqrState = turretLqr, TurretOut = turretOut,
-                QYawAngle = qYawAngle, QYawRate = qYawRate, RYawTorque = rYawTorque, MaxYawAccel = maxYawAccel,
-                DesiredYaw = desiredYaw,
 
                 BarrelState = barrelState, BarrelK = barrelK, BarrelLqrState = barrelLqr, BarrelOut = barrelOut,
                 QPitchAngle = qPitchAngle, QPitchRate = qPitchRate, RPitchTorque = rPitchTorque, MaxPitchAccel = maxPitchAccel,
-                DesiredPitch = desiredPitch,
+                DesiredPitch = elevationDeg * Mathf.Deg2Rad,
                 BarrelMinPitch = barrelMinPitchDeg * Mathf.Deg2Rad, BarrelMaxPitch = barrelMaxPitchDeg * Mathf.Deg2Rad,
             };
 
@@ -318,12 +397,12 @@ namespace LinearAlgebraDemos
             frameMs = (float)sw.Elapsed.TotalMilliseconds;
 
             hoverLqr = job.HoverLqrState;
-            turretLqr = job.TurretLqrState;
+            layLqr = job.LayLqrState;
             barrelLqr = job.BarrelLqrState;
 
             LogOnceIfDiverged(hoverOut[1] == 1f, ref hoverDivergedLogged, "hover LQR");
             LogOnceIfDiverged(allocOut[0].status == QPStatus.Optimal, ref allocFailedLogged, "allocation QP");
-            LogOnceIfDiverged(turretOut[0] == 1f, ref turretDivergedLogged, "turret yaw LQR");
+            LogOnceIfDiverged(layOut[0] == 1f, ref layDivergedLogged, "gun-laying LQR");
             LogOnceIfDiverged(barrelOut[0] == 1f, ref barrelDivergedLogged, "barrel pitch LQR");
 
             // ---- apply thrust: one force per thruster, at its mount, along its servo direction ----
@@ -335,11 +414,40 @@ namespace LinearAlgebraDemos
                 float magnitude = controls[4 + i] * thrusters.maxThrust * thrusterHealth[i];
                 Vector3 worldDir = hullGO.transform.TransformDirection(new Vector3(dir.x, dir.y, dir.z));
                 rb.AddForceAtPosition(worldDir * magnitude, MountWorld(i), ForceMode.Force);
+
+                thrusterPivots[i].localRotation = Quaternion.Euler(controls[i] * Mathf.Rad2Deg, 0f, 0f);
             }
 
-            // ---- apply turret/barrel kinematic pose (servo states, not physics) ----
-            turretGO.transform.localRotation = Quaternion.Euler(0f, turretState[0] * Mathf.Rad2Deg, 0f);
-            barrelGO.transform.localRotation = Quaternion.Euler(-barrelState[0] * Mathf.Rad2Deg, 0f, 0f);
+            // ---- gun elevation (kinematic servo state, not physics) ----
+            barrelPivotGO.transform.localRotation = Quaternion.Euler(-barrelState[0] * Mathf.Rad2Deg, 0f, 0f);
+        }
+
+        void LateUpdate()
+        {
+            if (chaseCam == null || hullGO == null) return;
+
+            // Frame-rate independent smoothing toward the wanted pose.
+            float t = 1f - Mathf.Exp(-camLag * Time.deltaTime);
+            chaseCam.transform.position = Vector3.Lerp(chaseCam.transform.position, WantedCameraPosition(), t);
+            chaseCam.transform.rotation = Quaternion.LookRotation(
+                hullGO.transform.position + Vector3.up * 1.5f - chaseCam.transform.position, Vector3.up);
+        }
+
+        // Follows the hull's HEADING only. Inheriting roll and pitch would swim the horizon on every
+        // attitude correction, which is exactly what the hover loop spends its time doing.
+        Vector3 WantedCameraPosition()
+        {
+            Vector3 flat = Vector3.ProjectOnPlane(hullGO.transform.forward, Vector3.up);
+            if (flat.sqrMagnitude < 1e-6f) flat = Vector3.forward;
+            return hullGO.transform.position - flat.normalized * camDistance + Vector3.up * camHeight;
+        }
+
+        void SnapCamera()
+        {
+            if (chaseCam == null) return;
+            chaseCam.transform.position = WantedCameraPosition();
+            chaseCam.transform.rotation = Quaternion.LookRotation(
+                hullGO.transform.position + Vector3.up * 1.5f - chaseCam.transform.position, Vector3.up);
         }
 
         static void LogOnceIfDiverged(bool converged, ref bool alreadyLogged, string label)
@@ -372,10 +480,10 @@ namespace LinearAlgebraDemos
 
                 // servo travel arc, swept on the exhaust side
                 Gizmos.color = new Color(0.4f, 0.4f, 0.45f);
-                Vector3 prev = ExhaustPoint(mount, angLo, 0.7f);
+                Vector3 prev = ExhaustPoint(mount, angLo, 0.9f);
                 for (int k = 1; k <= 10; k++)
                 {
-                    Vector3 next = ExhaustPoint(mount, Mathf.Lerp(angLo, angHi, k / 10f), 0.7f);
+                    Vector3 next = ExhaustPoint(mount, Mathf.Lerp(angLo, angHi, k / 10f), 0.9f);
                     Gizmos.DrawLine(prev, next);
                     prev = next;
                 }
@@ -383,14 +491,20 @@ namespace LinearAlgebraDemos
                 // commanded exhaust, length proportional to throttle
                 float throttle = controls[4 + i];
                 Gizmos.color = live ? Color.Lerp(Color.green, Color.red, throttle) : Color.gray;
-                Gizmos.DrawLine(mount, ExhaustPoint(mount, controls[i], 0.5f + 3f * throttle));
+                Gizmos.DrawLine(mount, ExhaustPoint(mount, controls[i], 0.7f + 3f * throttle));
                 Gizmos.DrawSphere(mount, 0.09f);
             }
 
-            Gizmos.color = Color.yellow;
+            // Bore line: with traverse fixed, the gap between this and the target IS the hull's yaw error.
+            Gizmos.color = new Color(1f, 0.4f, 0.1f);
+            Gizmos.DrawRay(barrelGO.transform.position, barrelGO.transform.forward * 8f);
+
             Transform aimTarget = target != null ? target : (autoTargetGO != null ? autoTargetGO.transform : null);
-            if (aimTarget != null)
+            if (aimTarget != null && autoLay)
+            {
+                Gizmos.color = Color.yellow;
                 Gizmos.DrawLine(barrelGO.transform.position, aimTarget.position);
+            }
         }
 
         // The nozzle points opposite the force it produces: down at servo angle 0.
@@ -402,15 +516,16 @@ namespace LinearAlgebraDemos
 
         void OnGUI()
         {
-            GUILayout.BeginArea(new Rect(10, 10, 520, 580), GUI.skin.box);
+            GUILayout.BeginArea(PanelRect, GUI.skin.box);
             GUILayout.Label($"Hover tank — {frameMs:F3} ms/frame (3x6 hover LQR + 8-control allocation QP + 2x servo LQR)");
-            GUILayout.Label($"hover: converged={hoverOut[1] == 1f}  iters={hoverOut[0]:F0}  residual={hoverOut[2]:E1}");
-            GUILayout.Label($"state: h={hoverState[0]:F2} v={hoverState[1]:F2} roll={hoverState[2] * Mathf.Rad2Deg:F1} pitch={hoverState[4] * Mathf.Rad2Deg:F1}");
+            GUILayout.Label("W/S drive    A/D yaw    Mouse Y elevation    SPACE air brake");
+            GUILayout.Label($"hover: converged={hoverOut[1] == 1f}  iters={hoverOut[0]:F0}  residual={hoverOut[2]:E1}   state: h={hoverState[0]:F2} roll={hoverState[2] * Mathf.Rad2Deg:F1} pitch={hoverState[4] * Mathf.Rad2Deg:F1}");
 
             QPInfo alloc = allocOut[0];
             GUILayout.Label($"alloc QP: {alloc.status}  pivots={alloc.iterations}  obj={alloc.objective:E2}");
             GUILayout.Label($"force  N   lift {wrenchOut[5]:F0}/{wrenchOut[0]:F0}   drive {wrenchOut[6]:F0}/{wrenchOut[1]:F0}   (achieved/demanded)");
             GUILayout.Label($"torque Nm  pitch {wrenchOut[7]:F0}/{wrenchOut[2]:F0}   yaw {wrenchOut[8]:F0}/{wrenchOut[3]:F0}   roll {wrenchOut[9]:F0}/{wrenchOut[4]:F0}");
+            GUILayout.Label($"yaw axis: {YawOwner()}    elevation {barrelState[0] * Mathf.Rad2Deg:F1} deg -> {elevationDeg:F1} (converged={barrelOut[0] == 1f})");
 
             for (int i = 0; i < 4; i++)
             {
@@ -427,14 +542,13 @@ namespace LinearAlgebraDemos
                 bool now = GUILayout.Toggle(live, MountNames[i], GUILayout.Width(50));
                 if (now != live) thrusterHealth[i] = now ? 1f : 0f;
             }
+            autoLay = GUILayout.Toggle(autoLay, "auto-lay");
+            autoOrbitTarget = GUILayout.Toggle(autoOrbitTarget, "orbit target");
             GUILayout.EndHorizontal();
 
-            GUILayout.Label($"turret: yaw={turretState[0] * Mathf.Rad2Deg:F1}deg converged={turretOut[0] == 1f}   barrel: pitch={barrelState[0] * Mathf.Rad2Deg:F1}deg converged={barrelOut[0] == 1f}");
-
             targetRideHeight = LabeledSlider($"ride height {targetRideHeight:F2}", targetRideHeight, 0.5f, 6f);
-            qHeight = LabeledSlider($"Q height {qHeight:F0}", qHeight, 1f, 200f);
             qTilt = LabeledSlider($"Q tilt {qTilt:F0}", qTilt, 1f, 300f);
-            rThrust = LabeledSlider($"R accel {rThrust:F3}", rThrust, 0.001f, 5f);
+            brakeForce = LabeledSlider($"brake force {brakeForce:F0}N", brakeForce, 1000f, 30000f);
             thrusters.servoMaxDeg = LabeledSlider($"servo range +{thrusters.servoMaxDeg:F0}deg", thrusters.servoMaxDeg, 0f, 85f);
             thrusters.servoRateDeg = LabeledSlider($"servo rate {thrusters.servoRateDeg:F0}deg/s", thrusters.servoRateDeg, 15f, 720f);
             thrusters.thrustRate = LabeledSlider($"thrust rate {thrusters.thrustRate:F0}N/s", thrusters.thrustRate, 2000f, 400000f);
@@ -451,14 +565,28 @@ namespace LinearAlgebraDemos
                 rb.rotation = Quaternion.identity;
                 rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
-                turretState[0] = 0f; turretState[1] = 0f;
                 barrelState[0] = 0f; barrelState[1] = 0f;
+                elevationDeg = 0f;
                 thrusterHealth = new float4(1f);
                 ResetControls();
+                SnapCamera();
             }
-            autoOrbitTarget = GUILayout.Toggle(autoOrbitTarget, "orbit target");
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
+        }
+
+        // Yaw has exactly one owner per step (see HoverTankStepJob.Execute). Yaw authority is bought
+        // with forward thrust the hover loop also wants, so the allocation can simply fail to deliver
+        // the demanded moment — say so rather than letting the gun drift off aim unexplained.
+        string YawOwner()
+        {
+            if (Mathf.Abs(lastSteer) > HoverTankStepJob.StickDeadzone) return "DRIVER (A/D)";
+            if (!autoLay) return "idle (auto-lay off)";
+            if (Mathf.Abs(layErrorRad) * Mathf.Rad2Deg < onTargetDeg) return "auto-lay: ON TARGET";
+
+            float torqueScale = hullMass * -Physics.gravity.y * mountArm;
+            return Mathf.Abs(wrenchOut[8] - wrenchOut[3]) > 0.05f * torqueScale
+                ? "auto-lay: YAW SATURATED" : "auto-lay: SLEWING";
         }
 
         static float LabeledSlider(string label, float v, float lo, float hi)
@@ -473,18 +601,22 @@ namespace LinearAlgebraDemos
 
     /// <summary>
     /// Per-fixed-step control law. Rebuilds the hover state from corner ride heights and warm-solves
-    /// the 6-state hover LQR (3 acceleration commands: vertical, roll, pitch); turns those plus the
-    /// driver's forward/yaw demand into a hull-frame <see cref="HoverWrench"/>; allocates that wrench
-    /// onto 4 servo angles and 4 throttles with <see cref="ThrusterAllocation.Solve"/>; then
-    /// warm-solves and Euler-integrates two independent 2-state double-integrator servo loops (turret
-    /// yaw, barrel pitch). All three LQR solves re-run every step (warm <see cref="floatLQRState"/>,
-    /// cheap once converged) to showcase the warm-start path, matching CartPole/Drone.
+    /// the 6-state hover LQR (3 acceleration commands: vertical, roll, pitch); warm-solves the 2-state
+    /// gun-laying LQR that turns a hull heading error into a yaw MOMENT; resolves the driver's
+    /// forward/yaw/brake inputs into the rest of the demanded hull-frame <see cref="HoverWrench"/>;
+    /// allocates that onto 4 servo angles and 4 throttles with <see cref="ThrusterAllocation.Solve"/>;
+    /// then warm-solves and Euler-integrates the barrel elevation servo. All three LQR solves re-run
+    /// every step (warm <see cref="floatLQRState"/>, cheap once converged) to showcase the warm-start
+    /// path, matching CartPole/Drone.
     ///
     /// Caller must RunByRef and copy the three LqrState fields back.
     /// </summary>
     [BurstCompile(CompileSynchronously = true)]
     public struct HoverTankStepJob : IJob
     {
+        /// <summary>Stick deflection below which the driver is considered hands-off the yaw axis.</summary>
+        public const float StickDeadzone = 0.02f;
+
         // hover / attitude
         [ReadOnly] public NativeArray<float> CornerHeights;   // FL, FR, BL, BR
         public NativeArray<float> PrevCornerHeights;
@@ -496,6 +628,25 @@ namespace LinearAlgebraDemos
         public float QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque;
         public float TargetRideHeight, CornerDX, CornerDZ, Dt;
 
+        // gun laying (hull yaw), only consumed while AutoLay is armed
+        public floatMxN LayK;
+        public floatLQRState LayLqrState;
+        public NativeArray<float> LayOut;
+        public float QLayAngle, QLayRate, RLayTorque, MaxLayAccel, YawInertia;
+        /// <summary>Heading error in radians, positive when the nose must swing left.</summary>
+        public float LayError;
+        /// <summary>Hull yaw rate about its own up axis, radians per second.</summary>
+        public float LayRate;
+        public bool AutoLay;
+
+        // driver
+        public float DriveInput, DriveForce;
+        public float SteerInput, SteerTorque;
+        public bool BrakeInput;
+        public float BrakeForce, BrakeGain;
+        /// <summary>Hull velocity along its own forward axis, m/s — the only component the rig can brake.</summary>
+        public float ForwardSpeed;
+
         // thruster allocation
         public NativeArray<float> Controls;
         public NativeArray<QPInfo> AllocOut;
@@ -503,16 +654,8 @@ namespace LinearAlgebraDemos
         public ThrusterSettings Settings;
         public float4 Health, MountX, MountY, MountZ;
         public float MountArm;
-        public float DriveDemand, YawDemand;
         /// <summary>cos of the hull's tilt from world up, for the gravity feedforward.</summary>
         public float TiltCos;
-
-        // turret yaw servo
-        public NativeArray<float> TurretState;
-        public floatMxN TurretK;
-        public floatLQRState TurretLqrState;
-        public NativeArray<float> TurretOut;
-        public float QYawAngle, QYawRate, RYawTorque, MaxYawAccel, DesiredYaw;
 
         // barrel pitch servo
         public NativeArray<float> BarrelState;
@@ -574,15 +717,44 @@ namespace LinearAlgebraDemos
                 uPitchAccel -= HoverK[2, j] * HoverState[j];
             }
 
+            // ---- gun laying: heading error -> yaw angular accel -> yaw moment ----
+            // The state is MEASURED off the rigid body, not integrated here: this loop commands the
+            // hull through the allocation, it does not own an actuator of its own. Solved every step
+            // regardless of AutoLay so arming it mid-flight costs no cold Riccati.
+            BuildServoModel(Dt, QLayAngle, QLayRate, RLayTorque, Allocator.Temp, out var Al, out var Bl, out var Ql, out var Rl);
+            RiccatiInfo infoLay = LQR.lqr(in Al, in Bl, in Ql, in Rl, ref LayK, ref LayLqrState);
+            LayOut[0] = infoLay ? 1f : 0f;
+            Al.Dispose(); Bl.Dispose(); Ql.Dispose(); Rl.Dispose();
+
+            float uLay = math.clamp(-(LayK[0, 0] * LayError + LayK[0, 1] * LayRate), -MaxLayAccel, MaxLayAccel);
+
+            // ---- driver demand: exactly one owner per axis ----
+            // The air brake takes the forward axis outright. Braking while also commanding thrust is a
+            // contradiction, and summing them would just hide the brake behind the throttle. Only the
+            // ALONG-TRACK component is opposed: the rig has no lateral force, so sideways drift is not
+            // brakeable here at all. The gain makes it ease off as the tank slows instead of chattering
+            // at rest, and BrakeForce caps it below the drive authority so attitude control keeps room.
+            float drive = BrakeInput
+                ? -math.clamp(BrakeGain * ForwardSpeed, -BrakeForce, BrakeForce)
+                : math.clamp(DriveInput, -1f, 1f) * DriveForce;
+
+            // Yaw likewise has one owner at a time: the stick takes it the moment it leaves the
+            // deadzone, and auto-lay only holds it while armed AND the stick is centred. Blending the
+            // two would let them fight over the same servos mid-turn.
+            float steer = math.clamp(SteerInput, -1f, 1f);
+            float yawDemand = math.abs(steer) > StickDeadzone
+                ? steer * SteerTorque
+                : (AutoLay ? YawInertia * uLay : 0f);
+
             // ---- demanded hull-frame wrench ----
             // The gravity feedforward is divided by the hull's tilt cosine because thrust is bolted to
             // the hull and gravity is not; floored so a near-vertical hull cannot demand unbounded lift.
             var desired = new HoverWrench
             {
                 Lift = Mass * (Gravity / math.max(TiltCos, 0.35f) + uVertAccel),
-                Drive = DriveDemand,
+                Drive = drive,
                 Pitch = PitchInertia * uPitchAccel,
-                Yaw = YawDemand,
+                Yaw = yawDemand,
                 Roll = RollInertia * uRollAccel,
             };
 
@@ -598,18 +770,6 @@ namespace LinearAlgebraDemos
             WrenchOut[5] = got.Lift; WrenchOut[6] = got.Drive; WrenchOut[7] = got.Pitch;
             WrenchOut[8] = got.Yaw; WrenchOut[9] = got.Roll;
 
-            // ---- turret yaw servo: 2-state double integrator tracking DesiredYaw ----
-            BuildServoModel(Dt, QYawAngle, QYawRate, RYawTorque, Allocator.Temp, out var Ay, out var By, out var Qy, out var Ry);
-            RiccatiInfo infoYaw = LQR.lqr(in Ay, in By, in Qy, in Ry, ref TurretK, ref TurretLqrState);
-            TurretOut[0] = infoYaw ? 1f : 0f;
-            Ay.Dispose(); By.Dispose(); Qy.Dispose(); Ry.Dispose();
-
-            float yawErr = WrapAngle(TurretState[0] - DesiredYaw);
-            float uYaw = -(TurretK[0, 0] * yawErr + TurretK[0, 1] * TurretState[1]);
-            uYaw = math.clamp(uYaw, -MaxYawAccel, MaxYawAccel);
-            TurretState[1] += Dt * uYaw;
-            TurretState[0] = WrapAngle(TurretState[0] + Dt * TurretState[1]);
-
             // ---- barrel pitch servo: 2-state double integrator tracking DesiredPitch, hard-clamped ----
             BuildServoModel(Dt, QPitchAngle, QPitchRate, RPitchTorque, Allocator.Temp, out var Ap, out var Bp, out var Qp, out var Rp);
             RiccatiInfo infoPitch = LQR.lqr(in Ap, in Bp, in Qp, in Rp, ref BarrelK, ref BarrelLqrState);
@@ -624,8 +784,6 @@ namespace LinearAlgebraDemos
             if (BarrelState[0] < BarrelMinPitch) { BarrelState[0] = BarrelMinPitch; BarrelState[1] = math.max(0f, BarrelState[1]); }
             if (BarrelState[0] > BarrelMaxPitch) { BarrelState[0] = BarrelMaxPitch; BarrelState[1] = math.min(0f, BarrelState[1]); }
         }
-
-        static float WrapAngle(float a) => math.atan2(math.sin(a), math.cos(a));
 
         /// <summary>
         /// Discrete (Euler, zero-order-hold over <paramref name="dt"/>) hover/attitude model: three
@@ -661,8 +819,10 @@ namespace LinearAlgebraDemos
 
         /// <summary>
         /// Discrete (Euler, zero-order-hold) 2-state double integrator [angle, rate] driven directly
-        /// by an angular-acceleration input (kinematic servo — no inertia term). Allocates A/B/Q/R
-        /// fresh with <paramref name="allocator"/> (caller disposes).
+        /// by an angular-acceleration input (kinematic — no inertia term). Shared by the gun-laying
+        /// loop, whose state is measured off the hull, and the barrel elevation servo, whose state it
+        /// integrates itself. Allocates A/B/Q/R fresh with <paramref name="allocator"/> (caller
+        /// disposes).
         /// </summary>
         public static void BuildServoModel(float dt, float qAngle, float qRate, float rTorque,
             Allocator allocator, out floatMxN A, out floatMxN B, out floatMxN Q, out floatMxN R)
