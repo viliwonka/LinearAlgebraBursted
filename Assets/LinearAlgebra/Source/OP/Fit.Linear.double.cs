@@ -173,9 +173,13 @@ namespace BULA
                 // Singular values descend, so the last COLUMN of V spans the approximate null space of
                 // [A | b] -- the direction the augmented data is least sensitive to, i.e. the TLS
                 // correction. Scaling it so its b component is -1 reads off x directly.
+                // V is orthonormal, so vb is a component of a UNIT vector: |vb| <= 1 whatever the data
+                // is scaled to. The threshold is therefore a bare constant, NOT scaled by S[0] --
+                // scaling it means that once the largest singular value passes 1/sqrtEps the threshold
+                // exceeds 1 and this test can never pass, so well-conditioned large-magnitude data
+                // reports "no finite solution".
                 double vb = V[n, nc - 1];
-                double scale = math.max(math.abs(S[0]), (double)1) * Consts.doubleSqrtEps;
-                if (math.abs(vb) > scale)
+                if (math.abs(vb) > Consts.doubleSqrtEps)
                 {
                     for (int j = 0; j < n; j++) x[j] = -V[j, nc - 1] / vb;
                 }

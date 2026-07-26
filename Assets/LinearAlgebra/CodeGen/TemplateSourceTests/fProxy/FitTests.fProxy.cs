@@ -2121,6 +2121,38 @@ public class fProxyFitTests
         pts.Dispose();
     }
 
+    // Fit.total is scale-INVARIANT: scaling A and b together scales the augmented matrix, hence its
+    // singular values, but leaves V untouched -- so the TLS solution is identical. That makes it an
+    // exact oracle, and it is the property a threshold scaled by the largest singular value breaks:
+    // once S[0] passes 1/sqrtEps such a threshold exceeds 1, and since the tested quantity is a
+    // component of a UNIT vector it can never pass, so a perfectly conditioned fit reports failure.
+    [Test]
+    public void TotalIsScaleInvariantAtLargeMagnitude()
+    {
+        const int m = 12, n = 2;
+
+        foreach (double s in new[] { 1.0, 1e4 })
+        {
+            var A = new fProxyMxN(m, n, Allocator.Temp);
+            var b = new fProxyN(m, Allocator.Temp);
+            var x = new fProxyN(n, Allocator.Temp);
+
+            // b = 2*a0 - 0.5*a1 exactly, so TLS and OLS agree and the answer is known.
+            for (int i = 0; i < m; i++)
+            {
+                double a0 = s * (1.0 + 0.37 * i), a1 = s * (2.0 - 0.11 * i);
+                A[i, 0] = (fProxy)a0; A[i, 1] = (fProxy)a1;
+                b[i] = (fProxy)(2.0 * a0 - 0.5 * a1);
+            }
+
+            Assert.IsTrue(Fit.total(in A, in b, ref x), $"total failed at scale {s}");
+            Assert.That((double)x[0], Is.EqualTo(2.0).Within(1e-2), $"x0 at scale {s}");
+            Assert.That((double)x[1], Is.EqualTo(-0.5).Within(1e-2), $"x1 at scale {s}");
+
+            A.Dispose(); b.Dispose(); x.Dispose();
+        }
+    }
+
     // ------------------------------------------------------- review regressions
 
     // The conic design entries are FOURTH powers of the coordinates, so an off-origin cloud

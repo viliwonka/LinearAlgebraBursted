@@ -149,6 +149,12 @@ namespace BULA.Control
             double blowup = Riccati.BlowupThreshold(in Q, in R);
             int budget = maxIter > 0 ? maxIter : WARM_MAX_ITER;
 
+            // Floor for the relative test, from the problem DATA rather than a fixed 1 — see
+            // Riccati.dare. A constant floor makes this ABSOLUTE whenever ‖S‖ < 1 and the first small
+            // step then reports Converged; filter-scale costs live entirely in that regime.
+            double residFloor = (Riccati.FrobeniusNorm(in Q) + Riccati.FrobeniusNorm(in R))
+                              * (double)Consts.floatEpsilon;
+
             int iters = 0;
             RiccatiStatus status = RiccatiStatus.MaxIterations;
             double residual = double.PositiveInfinity;
@@ -164,7 +170,8 @@ namespace BULA.Control
                 if (!(newNorm <= blowup)) { status = RiccatiStatus.Diverged; residual = double.PositiveInfinity; break; }
 
                 double diffNorm = Riccati.FrobeniusNormDiff(in Snext, in Scur);
-                residual = diffNorm / math.max(1.0, newNorm);
+                double denom = math.max(newNorm, residFloor);
+                residual = denom > 0 ? diffNorm / denom : 0.0;
                 Scur.CopyFrom(in Snext);
 
                 if (residual <= tol) { status = RiccatiStatus.Converged; break; }
@@ -297,6 +304,11 @@ namespace BULA.Control
             var Kstep = new floatMxN(m, n, Allocator.Temp);
 
             double blowup = Riccati.BlowupThreshold(in Q, in Qf);
+
+            // See RiccatiIterate: data-derived floor, not a fixed 1.
+            double residFloor = (Riccati.FrobeniusNorm(in Q) + Riccati.FrobeniusNorm(in R))
+                              * (double)Consts.floatEpsilon;
+
             bool rankDeficient = false;
             RiccatiStatus status = RiccatiStatus.Converged;
             int steps = 0;
@@ -317,7 +329,8 @@ namespace BULA.Control
                     for (int c = 0; c < n; c++)
                         Kschedule[k * m + r, c] = Kstep[r, c];
 
-                residual = Riccati.FrobeniusNormDiff(in Snext, in Sk) / math.max(1.0, newNorm);
+                double denom = math.max(newNorm, residFloor);
+                residual = denom > 0 ? Riccati.FrobeniusNormDiff(in Snext, in Sk) / denom : 0.0;
 
                 Sk.CopyFrom(in Snext);
             }
