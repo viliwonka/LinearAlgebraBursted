@@ -25,19 +25,18 @@ using fProxy3 = Unity.Mathematics.float3;
 // CompileSynchronously forces the compile to happen (and fail) here rather than silently falling back
 // to Mono, which would make this test pass while proving nothing.
 //
-// KNOWN LIMITATION, found by this file: the point-cloud field must NOT be [ReadOnly]. The geometric
-// entry points reinterpret the array and build a MUTABLE fProxyMxN view over it, which trips the
-// safety system on a read-only array; the job then aborts and every output stays zero. It fails
-// silently -- the fit reports no error, the caller just gets zeros -- and [ReadOnly] is the idiomatic
-// way to pass input to a job, so this is a trap rather than a footnote. Fixing it needs either a
-// read-only matrix view or an internal copy; until then the jobs below deliberately omit [ReadOnly],
-// and this comment is the warning. RANSAC is unaffected because it gathers into its own scratch.
+// The clouds below are deliberately [ReadOnly] -- that is how a caller would idiomatically pass input
+// to a job, and it is a REGRESSION GUARD. This file first went red on exactly that: the geometric
+// entry points used to wrap the reinterpreted array in a MUTABLE fProxyMxN view, which trips the
+// safety system on a read-only array, aborting the job so every output stayed zero -- silently, with
+// no error reported. They now index the flat reinterpreted array directly, the way Fit.sphere always
+// did. Reinterpret itself preserves read-only-ness perfectly well; the mutable VIEW was the problem.
 public class fProxyFitBurstTests
 {
     [BurstCompile(CompileSynchronously = true)]
     struct GeometryJob : IJob
     {
-        public NativeArray<fProxy3> Points;
+        [ReadOnly] public NativeArray<fProxy3> Points;
         public NativeArray<fProxy> Out;          // 0..2 normal, 3 radius, 4 line dir x
 
         public void Execute()
@@ -56,7 +55,7 @@ public class fProxyFitBurstTests
     [BurstCompile(CompileSynchronously = true)]
     struct RobustJob : IJob
     {
-        public NativeArray<fProxy3> Points;
+        [ReadOnly] public NativeArray<fProxy3> Points;
         public NativeArray<fProxy> Out;
 
         public void Execute()
@@ -74,7 +73,7 @@ public class fProxyFitBurstTests
     [BurstCompile(CompileSynchronously = true)]
     struct RansacJob : IJob
     {
-        public NativeArray<fProxy3> Points;
+        [ReadOnly] public NativeArray<fProxy3> Points;
         public NativeArray<fProxy> Out;
         public NativeArray<int> Inliers;
 
@@ -90,7 +89,7 @@ public class fProxyFitBurstTests
     [BurstCompile(CompileSynchronously = true)]
     struct SolidJob : IJob
     {
-        public NativeArray<fProxy3> Points;
+        [ReadOnly] public NativeArray<fProxy3> Points;
         public NativeArray<fProxy> Out;
 
         public void Execute()

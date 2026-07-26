@@ -38,15 +38,24 @@ namespace BULA
         /// then undefined.
         /// </summary>
         public static bool line(NativeArray<double2> points, out double2 centroid, out double2 direction)
-            => PCA.fitLine(points, out centroid, out direction);
+        {
+            var l2 = new doubleL2Loss();
+            return line(points, in l2, out centroid, out direction);
+        }
 
         /// <summary>Best-fit line through a 3D point cloud. See the 2D overload.</summary>
         public static bool line(NativeArray<double3> points, out double3 centroid, out double3 direction)
-            => PCA.fitLine(points, out centroid, out direction);
+        {
+            var l2 = new doubleL2Loss();
+            return line(points, in l2, out centroid, out direction);
+        }
 
         /// <summary>Best-fit line through a 4D point cloud. See the 2D overload.</summary>
         public static bool line(NativeArray<double4> points, out double4 centroid, out double4 direction)
-            => PCA.fitLine(points, out centroid, out direction);
+        {
+            var l2 = new doubleL2Loss();
+            return line(points, in l2, out centroid, out direction);
+        }
 
         /// <summary>
         /// Best-fit line through a 2D point cloud under <paramref name="loss"/>, by IRLS on the
@@ -63,11 +72,10 @@ namespace BULA
             if (points.Length < 2) throw new ArgumentException("Fit.line: points.Length must be >= 2");
 
             var flat = points.Reinterpret<double2, double>();
-            var X = new doubleMxN(points.Length, 2, flat);
             var mean = new doubleN(2, Allocator.Temp);
             var V = new doubleMxN(2, 2, Allocator.Temp);
 
-            bool ok = SubspaceIrls(in X, 1, in loss, maxIter, ref mean, ref V);
+            bool ok = SubspaceIrls(flat, points.Length, 2, 1, in loss, maxIter, ref mean, ref V);
             centroid = new double2(mean[0], mean[1]);
             direction = ok ? new double2(V[0, 0], V[1, 0]) : default;
 
@@ -83,11 +91,10 @@ namespace BULA
             if (points.Length < 2) throw new ArgumentException("Fit.line: points.Length must be >= 2");
 
             var flat = points.Reinterpret<double3, double>();
-            var X = new doubleMxN(points.Length, 3, flat);
             var mean = new doubleN(3, Allocator.Temp);
             var V = new doubleMxN(3, 3, Allocator.Temp);
 
-            bool ok = SubspaceIrls(in X, 1, in loss, maxIter, ref mean, ref V);
+            bool ok = SubspaceIrls(flat, points.Length, 3, 1, in loss, maxIter, ref mean, ref V);
             centroid = new double3(mean[0], mean[1], mean[2]);
             direction = ok ? new double3(V[0, 0], V[1, 0], V[2, 0]) : default;
 
@@ -103,11 +110,10 @@ namespace BULA
             if (points.Length < 2) throw new ArgumentException("Fit.line: points.Length must be >= 2");
 
             var flat = points.Reinterpret<double4, double>();
-            var X = new doubleMxN(points.Length, 4, flat);
             var mean = new doubleN(4, Allocator.Temp);
             var V = new doubleMxN(4, 4, Allocator.Temp);
 
-            bool ok = SubspaceIrls(in X, 1, in loss, maxIter, ref mean, ref V);
+            bool ok = SubspaceIrls(flat, points.Length, 4, 1, in loss, maxIter, ref mean, ref V);
             centroid = new double4(mean[0], mean[1], mean[2], mean[3]);
             direction = ok ? new double4(V[0, 0], V[1, 0], V[2, 0], V[3, 0]) : default;
 
@@ -125,7 +131,10 @@ namespace BULA
         /// False means the underlying eigensolve did not converge; normal is then undefined.
         /// </summary>
         public static bool plane(NativeArray<double3> points, out double3 centroid, out double3 normal)
-            => PCA.fitPlane(points, out centroid, out normal);
+        {
+            var l2 = new doubleL2Loss();
+            return plane(points, in l2, out centroid, out normal);
+        }
 
         /// <summary>
         /// Best-fit plane through a 3D point cloud under <paramref name="loss"/>, by IRLS on the
@@ -141,11 +150,10 @@ namespace BULA
             if (points.Length < 3) throw new ArgumentException("Fit.plane: points.Length must be >= 3");
 
             var flat = points.Reinterpret<double3, double>();
-            var X = new doubleMxN(points.Length, 3, flat);
             var mean = new doubleN(3, Allocator.Temp);
             var V = new doubleMxN(3, 3, Allocator.Temp);
 
-            bool ok = SubspaceIrls(in X, 2, in loss, maxIter, ref mean, ref V);
+            bool ok = SubspaceIrls(flat, points.Length, 3, 2, in loss, maxIter, ref mean, ref V);
             centroid = new double3(mean[0], mean[1], mean[2]);
             normal = ok ? new double3(V[0, 2], V[1, 2], V[2, 2]) : default;
 
@@ -165,11 +173,11 @@ namespace BULA
         // doubleL2Loss has RhoPrime == 1, so the weights never move and this exits after one pass --
         // identical to plain PCA, which is why the non-generic overloads forward there directly.
         // ============================================================================================
-        static bool SubspaceIrls<TLoss>(in doubleMxN X, int k, in TLoss loss, int maxIter,
+        static bool SubspaceIrls<TLoss>(NativeArray<double> X, int n, int d, int k,
+                                        in TLoss loss, int maxIter,
                                         ref doubleN mean, ref doubleMxN V)
             where TLoss : struct, IdoubleRobustLoss
         {
-            int n = X.M_Rows, d = X.N_Cols;
             if (maxIter <= 0) maxIter = DefaultIrlsIter;
 
             var w = new doubleN(n, Allocator.Temp);
@@ -186,7 +194,7 @@ namespace BULA
                 {
                     double wi = w[i];
                     sw += wi;
-                    for (int j = 0; j < d; j++) mean[j] += wi * X[i, j];
+                    for (int j = 0; j < d; j++) mean[j] += wi * X[i * d + j];
                 }
                 if (!(sw > (double)0)) { ok = false; break; }   // every point rejected (redescending loss)
                 for (int j = 0; j < d; j++) mean[j] /= sw;
@@ -198,8 +206,8 @@ namespace BULA
                     double wi = w[i];
                     for (int a = 0; a < d; a++)
                     {
-                        double qa = X[i, a] - mean[a];
-                        for (int b = 0; b < d; b++) C[a, b] += wi * qa * (X[i, b] - mean[b]);
+                        double qa = X[i * d + a] - mean[a];
+                        for (int b = 0; b < d; b++) C[a, b] += wi * qa * (X[i * d + b] - mean[b]);
                     }
                 }
                 for (int a = 0; a < d; a++)
@@ -214,7 +222,7 @@ namespace BULA
                     double q2 = (double)0;
                     for (int a = 0; a < d; a++)
                     {
-                        double qa = X[i, a] - mean[a];
+                        double qa = X[i * d + a] - mean[a];
                         q2 += qa * qa;
                     }
 
@@ -222,7 +230,7 @@ namespace BULA
                     for (int j = 0; j < k; j++)
                     {
                         double dp = (double)0;
-                        for (int a = 0; a < d; a++) dp += (X[i, a] - mean[a]) * V[a, j];
+                        for (int a = 0; a < d; a++) dp += (X[i * d + a] - mean[a]) * V[a, j];
                         inSub += dp * dp;
                     }
 

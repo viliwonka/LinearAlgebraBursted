@@ -25,12 +25,19 @@ using Unity.Mathematics;
 //
 // CompileSynchronously forces the compile to happen (and fail) here rather than silently falling back
 // to Mono, which would make this test pass while proving nothing.
+//
+// The clouds below are deliberately [ReadOnly] -- that is how a caller would idiomatically pass input
+// to a job, and it is a REGRESSION GUARD. This file first went red on exactly that: the geometric
+// entry points used to wrap the reinterpreted array in a MUTABLE doubleMxN view, which trips the
+// safety system on a read-only array, aborting the job so every output stayed zero -- silently, with
+// no error reported. They now index the flat reinterpreted array directly, the way Fit.sphere always
+// did. Reinterpret itself preserves read-only-ness perfectly well; the mutable VIEW was the problem.
 public class doubleFitBurstTests
 {
     [BurstCompile(CompileSynchronously = true)]
     struct GeometryJob : IJob
     {
-        public NativeArray<double3> Points;
+        [ReadOnly] public NativeArray<double3> Points;
         public NativeArray<double> Out;          // 0..2 normal, 3 radius, 4 line dir x
 
         public void Execute()
@@ -49,7 +56,7 @@ public class doubleFitBurstTests
     [BurstCompile(CompileSynchronously = true)]
     struct RobustJob : IJob
     {
-        public NativeArray<double3> Points;
+        [ReadOnly] public NativeArray<double3> Points;
         public NativeArray<double> Out;
 
         public void Execute()
@@ -67,7 +74,7 @@ public class doubleFitBurstTests
     [BurstCompile(CompileSynchronously = true)]
     struct RansacJob : IJob
     {
-        public NativeArray<double3> Points;
+        [ReadOnly] public NativeArray<double3> Points;
         public NativeArray<double> Out;
         public NativeArray<int> Inliers;
 
@@ -83,7 +90,7 @@ public class doubleFitBurstTests
     [BurstCompile(CompileSynchronously = true)]
     struct SolidJob : IJob
     {
-        public NativeArray<double3> Points;
+        [ReadOnly] public NativeArray<double3> Points;
         public NativeArray<double> Out;
 
         public void Execute()
