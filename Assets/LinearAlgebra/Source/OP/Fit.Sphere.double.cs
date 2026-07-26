@@ -69,10 +69,10 @@ namespace BULA
         {
             if (points.Length < 3) throw new ArgumentException("Fit.sphere: points.Length must be >= 3 in 2D");
 
-            var c = new doubleN(2, Allocator.Temp);
-            bool ok = SphereIrls(points.Reinterpret<double2, double>(), points.Length, 2, in loss, maxIter, ref c, out radius);
-            center = ok ? new double2(c[0], c[1]) : default;
-            c.Dispose();
+            var model = new doubleCircle();
+            bool ok = irls(points, ref model, in loss, maxIter);
+            center = ok ? model.Center : default;
+            radius = ok ? model.Radius : (double)0;
             return ok;
         }
 
@@ -83,10 +83,10 @@ namespace BULA
         {
             if (points.Length < 4) throw new ArgumentException("Fit.sphere: points.Length must be >= 4 in 3D");
 
-            var c = new doubleN(3, Allocator.Temp);
-            bool ok = SphereIrls(points.Reinterpret<double3, double>(), points.Length, 3, in loss, maxIter, ref c, out radius);
-            center = ok ? new double3(c[0], c[1], c[2]) : default;
-            c.Dispose();
+            var model = new doubleSphere3();
+            bool ok = irls(points, ref model, in loss, maxIter);
+            center = ok ? model.Center : default;
+            radius = ok ? model.Radius : (double)0;
             return ok;
         }
 
@@ -132,50 +132,5 @@ namespace BULA
             return ok;
         }
 
-        // IRLS on the geometric residual, seeded from the algebraic fit.
-        static bool SphereIrls<TLoss>(NativeArray<double> flat, int n, int d, in TLoss loss,
-                                      int maxIter, ref doubleN center, out double radius)
-            where TLoss : struct, IdoubleRobustLoss
-        {
-            if (maxIter <= 0) maxIter = DefaultIrlsIter;
-
-            if (!SphereAlgebraic(flat, n, d, default(doubleN), ref center, out radius))
-                return false;
-
-            var w = new doubleN(n, Allocator.Temp);
-            for (int i = 0; i < n; i++) w[i] = (double)1;
-
-            bool ok = true;
-            for (int it = 0; it < maxIter; it++)
-            {
-                double maxDelta = (double)0, sw = (double)0;
-                for (int i = 0; i < n; i++)
-                {
-                    double dist2 = (double)0;
-                    for (int j = 0; j < d; j++)
-                    {
-                        double q = flat[i * d + j] - center[j];
-                        dist2 += q * q;
-                    }
-                    double res = math.sqrt(dist2) - radius;
-                    double wNew = loss.RhoPrime(res * res);
-                    maxDelta = math.max(maxDelta, math.abs(wNew - w[i]));
-                    w[i] = wNew;
-                    sw += wNew;
-                }
-
-                // A redescending loss can zero every weight, leaving an all-zero design whose solve
-                // returns NaN. Reporting that as success would be a false certificate -- the same
-                // collapse the other IRLS loops guard, which this one was missing.
-                if (!(sw > (double)0)) { ok = false; break; }
-                if (maxDelta <= Consts.doubleSqrtEps) break;
-
-                ok = SphereAlgebraic(flat, n, d, in w, ref center, out radius);
-                if (!ok) break;
-            }
-
-            w.Dispose();
-            return ok;
-        }
     }
 }
