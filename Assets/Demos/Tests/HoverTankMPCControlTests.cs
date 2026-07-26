@@ -181,6 +181,162 @@ namespace LinearAlgebraDemos.Tests
             u.Dispose(); floor.Dispose(); ceil.Dispose();
         }
 
+        /// <summary>
+        /// The per-step cost of the whole control path — MPC solve, allocation QP and ground effect,
+        /// exactly what the demo's panel reports as ctrlMs — at the demo's OWN configuration rather
+        /// than this file's cheaper fixture: horizon 25 at a 0.02 s step, four soft rows, so
+        /// nz = 25*6 + 100 = 250 condensed variables.
+        ///
+        /// The bound is deliberately loose. A fixed step is 20 ms and the honest measurement is a few
+        /// hundred microseconds, so 5 ms catches an order-of-magnitude regression — the kind that would
+        /// mean the model stopped being LTI and something started re-condensing per step — without
+        /// turning a busy machine into a red suite. The measured number is logged, not asserted.
+        /// </summary>
+        [Test]
+        public void ControlStep_CostsFarLessThanAFixedStep()
+        {
+            const int warmup = 25, timed = 200;
+            const int demoHorizon = 25;
+            const float demoDt = 0.02f;
+
+            var rig = new StepRig(demoDt, demoHorizon, fwdSpeed: 6f, proxFwd: RayLength,
+                                  groundNormal: math.normalize(new float3(0f, 1f, -0.15f)), driveInput: 1f);
+
+            for (int s = 0; s < warmup; s++) rig.Step();
+
+            var ms = new double[timed];
+            var watch = new System.Diagnostics.Stopwatch();
+            for (int s = 0; s < timed; s++)
+            {
+                watch.Restart();
+                rig.Step();
+                watch.Stop();
+                ms[s] = watch.Elapsed.TotalMilliseconds;
+            }
+
+            System.Array.Sort(ms);
+            double median = ms[timed / 2], min = ms[0], p95 = ms[(int)(timed * 0.95)];
+
+            MPCInfo info = rig.Info;
+            UnityEngine.Debug.Log(
+                $"control step @ horizon {demoHorizon} ({demoHorizon * demoDt:F2} s), nz={rig.Nz}: " +
+                $"median {median:F4} ms, min {min:F4} ms, p95 {p95:F4} ms  " +
+                $"[fixed step {demoDt * 1000f:F0} ms, so {100.0 * median / (demoDt * 1000f):F2}% of budget]  " +
+                $"MPC {info.status} pivots={info.iterations} activeSetChanges={info.activeSetChanges}");
+
+            Assert.IsTrue(info.status != MPCStatus.Fallback, $"the timed run fell back: {info.status}");
+            Assert.IsTrue(median < 5.0,
+                $"control step median {median:F4} ms — a fixed step is {demoDt * 1000f:F0} ms (min {min:F4}, p95 {p95:F4})");
+
+            rig.Dispose();
+        }
+
+        /// <summary>
+        /// A step job plus every buffer it needs, built ONCE and stepped repeatedly, so a timing loop
+        /// measures the control path rather than the allocation of its arguments. The estimate it is
+        /// fed never changes, which also keeps the warm start on its steady-state path — the one the
+        /// demo actually runs in.
+        /// </summary>
+        struct StepRig
+        {
+            HoverTankMPCStepJob job;
+            NativeArray<float> x0, plan, u0, soft, preview, prox, controls, wrench, ground;
+            NativeArray<QPInfo> alloc;
+            NativeArray<MPCInfo> outInfo;
+
+            public int Nz => job.Mpc.nz;
+            public MPCInfo Info => outInfo[0];
+
+            public StepRig(float dt, int horizon, float fwdSpeed, float proxFwd, float3 groundNormal, float driveInput)
+            {
+                const int n = HoverTankMPCDemo.StateCount, m = HoverTankMPCDemo.InputCount;
+                GimbalSettings settings = GimbalSettings.Default;
+
+                HoverTankMPCDemo.BuildMpcModel(dt, 0.05f, 12f, 120f, 14f, 90f, 8f, 10f, 0.02f, 0.4f,
+                                               Allocator.TempJob, out var A, out var B, out var Q, out var R);
+
+                // The demo's own authority, so the box is the one the shipped controller plans against.
+                float totalThrust = GimbalAllocation.Thrusters * settings.maxThrust;
+                float torque = 0.35f * totalThrust;
+                var uLo = new floatN(m, Allocator.TempJob, true);
+                var uHi = new floatN(m, Allocator.TempJob, true);
+                uLo[HoverTankMPCDemo.AFwd] = -9000f / Mass; uHi[HoverTankMPCDemo.AFwd] = 9000f / Mass;
+                uLo[HoverTankMPCDemo.ALat] = -7000f / Mass; uHi[HoverTankMPCDemo.ALat] = 7000f / Mass;
+                uLo[HoverTankMPCDemo.AVert] = -Gravity;
+                uHi[HoverTankMPCDemo.AVert] = math.max(0.5f, totalThrust / Mass - Gravity);
+                uLo[HoverTankMPCDemo.AlphaRoll] = -torque * HalfWidth / RollInertia;
+                uHi[HoverTankMPCDemo.AlphaRoll] = torque * HalfWidth / RollInertia;
+                uLo[HoverTankMPCDemo.AlphaPitch] = -torque * HalfLength / PitchInertia;
+                uHi[HoverTankMPCDemo.AlphaPitch] = torque * HalfLength / PitchInertia;
+                uLo[HoverTankMPCDemo.AlphaYaw] = -9000f / YawInertia;
+                uHi[HoverTankMPCDemo.AlphaYaw] = 9000f / YawInertia;
+
+                var C = new floatMxN(HoverTankMPCDemo.SoftRows, n, Allocator.TempJob);
+                C[0, HoverTankMPCDemo.SFwd] = 1f; C[1, HoverTankMPCDemo.SFwd] = -1f;
+                C[2, HoverTankMPCDemo.SLat] = 1f; C[3, HoverTankMPCDemo.SLat] = -1f;
+                var d = new floatN(HoverTankMPCDemo.SoftRows, Allocator.TempJob, true);
+                for (int i = 0; i < HoverTankMPCDemo.SoftRows; i++) d[i] = RayLength;
+
+                var mpc = new floatMPCState(n, m, horizon, Allocator.TempJob,
+                                            in A, in B, in Q, in R, in uLo, in uHi, in C, in d, Penalty, 1f);
+                A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose();
+                uLo.Dispose(); uHi.Dispose(); C.Dispose(); d.Dispose();
+
+                x0 = new NativeArray<float>(n, Allocator.TempJob);
+                plan = new NativeArray<float>(horizon * n, Allocator.TempJob);
+                u0 = new NativeArray<float>(m, Allocator.TempJob);
+                soft = new NativeArray<float>(HoverTankMPCDemo.SoftRows, Allocator.TempJob);
+                outInfo = new NativeArray<MPCInfo>(1, Allocator.TempJob);
+                preview = new NativeArray<float>(4, Allocator.TempJob);
+                prox = new NativeArray<float>(ProximityRig.Rays, Allocator.TempJob);
+                prox[0] = proxFwd;
+                for (int i = 1; i < ProximityRig.Rays; i++) prox[i] = RayLength;
+
+                controls = new NativeArray<float>(GimbalAllocation.ControlCount, Allocator.TempJob);
+                alloc = new NativeArray<QPInfo>(1, Allocator.TempJob);
+                wrench = new NativeArray<float>(2 * GimbalAllocation.WrenchRows, Allocator.TempJob);
+                ground = new NativeArray<float>(GimbalAllocation.Thrusters, Allocator.TempJob);
+
+                float trim = math.clamp(Mass * Gravity / (4f * settings.maxThrust),
+                                        settings.minThrust / settings.maxThrust, 1f);
+                for (int i = 0; i < 4; i++) { controls[i] = 0f; controls[4 + i] = 0f; controls[8 + i] = trim; }
+
+                job = new HoverTankMPCStepJob
+                {
+                    Mpc = mpc,
+                    MpcX0 = x0, MpcRef = plan, MpcU0 = u0, MpcSoft = soft,
+                    MpcOut = outInfo, PreviewOut = preview, Horizon = horizon,
+                    Mass = Mass, RollInertia = RollInertia, PitchInertia = PitchInertia,
+                    YawInertia = YawInertia, Gravity = Gravity,
+                    Dt = dt,
+                    Rpy = float3.zero, GroundNormal = groundNormal, VelWorld = float3.zero,
+                    ForwardSpeed = fwdSpeed, LateralSpeed = 0f, YawRate = 0f, RollRate = 0f, PitchRate = 0f,
+                    Clearance = RideHeight, TiltCos = 1f, TargetRideHeight = RideHeight,
+                    GroundValid = true,
+                    ProxSensed = prox, CollisionMargin = Margin,
+                    Controls = controls, AllocOut = alloc, WrenchOut = wrench,
+                    Settings = settings, Health = new float4(1f),
+                    MountX = new float4(-HalfWidth, HalfWidth, -HalfWidth, HalfWidth),
+                    MountY = float4.zero,
+                    MountZ = new float4(HalfLength, HalfLength, -HalfLength, -HalfLength),
+                    MountArm = math.max(HalfWidth, HalfLength),
+                    DriveInput = driveInput, StrafeInput = 0f, SteerInput = 0f, BrakeInput = false,
+                    MaxFwdSpeed = 14f, MaxLatSpeed = 9f, MaxYawRate = 1.4f,
+                    NozzleHeights = new float4(2f), NozzleRadius = 2f, GroundOut = ground,
+                };
+            }
+
+            public void Step() => IJobExtensions.RunByRef(ref job);
+
+            public void Dispose()
+            {
+                job.Mpc.Dispose();
+                x0.Dispose(); plan.Dispose(); u0.Dispose(); soft.Dispose();
+                outInfo.Dispose(); preview.Dispose(); prox.Dispose();
+                controls.Dispose(); alloc.Dispose(); wrench.Dispose(); ground.Dispose();
+            }
+        }
+
         // ---------------------------------------------------------------------------------------
 
         static NativeArray<float> RunFixed(float fwdSpeed, float3 groundNormal, bool groundValid,
