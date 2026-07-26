@@ -11,36 +11,16 @@ using Unity.Mathematics;
 
 
 
-// Does the Fit facade actually run under Burst?
+// Fit under Burst. A managed pass proves the math, not that the code is Burst-legal.
 //
-// A managed pass proves the math and nothing about whether the code is Burst-legal: throwing argument
-// guards, NativeArray.Reinterpret, Allocator.Temp scratch and the struct-functor generics are each
-// capable of failing to compile while the managed build stays perfectly green. It also re-runs each
-// fit inside the job and reads results back through a NativeArray, which is the shape that caught the
-// LOBPCG IJob struct-copy bug -- a solver whose state is reseated by a swap loses that reseat when
-// Burst copies the job struct by value.
+// One job with an enum switch (house pattern). That saves job scaffolding, not specializations --
+// Burst still compiles everything reachable from the switch.
 //
-// COVERAGE SPLIT, deliberate: the shape x solver GRID lives in FitShapeSolverTests and is managed, so
-// it costs nothing to compile; this file Bursts a handful of REPRESENTATIVE combinations. Burst
-// legality is a property of the code rather than of the combination -- if irls<Plane, Huber> compiles
-// then irls<Sphere3, Cauchy> will too -- so compiling the whole grid would multiply build time by the
-// grid size for almost no extra information. What that trade could miss is a shape whose Refit uses
-// some construct the others avoid; that risk is accepted knowingly rather than by omission.
+// The shape x solver grid stays managed in FitShapeSolverTests; this Bursts representative
+// combinations only. Compiling the whole grid would cost build time for little extra signal.
 //
-// ONE job with an enum switch, matching KMeansTests/LPTests. Note what that does and does NOT save:
-// Burst still compiles every solver specialization reachable from the switch, so the saving is
-// job-struct scaffolding (4 structs -> 1, per dtype), not specialization count -- and the
-// specializations are the expensive part.
-//
-// CompileSynchronously forces the compile to happen (and fail) here rather than silently falling back
-// to Mono, which would make this file pass while proving nothing.
-//
-// The clouds are deliberately [ReadOnly] -- that is how a caller idiomatically passes input to a job,
-// and it is a REGRESSION GUARD. This file first went red on exactly that: the geometric entry points
-// used to wrap the reinterpreted array in a MUTABLE floatMxN view, which trips the safety system on
-// a read-only array, aborting the job so every output stayed zero, silently. They now index the flat
-// reinterpreted array directly, the way Fit.sphere always did. Reinterpret itself preserves
-// read-only-ness perfectly well; the mutable VIEW was the problem.
+// Clouds are [ReadOnly] as a regression guard: the geometric fits used to wrap the reinterpreted
+// array in a MUTABLE view, which aborts the job on a read-only array and silently zeroes the output.
 public class floatFitBurstTests
 {
     public enum Case { Geometry = 0, Robust = 1, Ransac = 2, Solid = 3, ShapeSolvers = 4 }
