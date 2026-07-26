@@ -10,15 +10,21 @@ using UnityEngine;
 namespace LinearAlgebraDemos
 {
     /// <summary>
-    /// Hover tank (BF2142-style) stabilized by two independent discrete LQR loops:
-    /// a 6-state hover/attitude regulator (height error, vertical velocity, roll, roll
-    /// rate, pitch, pitch rate) driving 4 corner thrusters, and a pair of 2-state
-    /// double-integrator servos (turret yaw, barrel pitch) tracking a moving target.
-    /// Ride height/attitude is sensed from 4 corner-down raycasts (measured ride height
-    /// + finite-difference vertical velocity per corner, differenced across the hull to
-    /// estimate roll/pitch). WASD applies plain drive/steer forces on top of the hover
-    /// loop, perturbing it. Self-assembles ground/hull/turret/barrel/target primitives
-    /// in <see cref="Start"/> (sceneless, like the other demos).
+    /// Hover tank (BF2142-style) on FOUR SERVO THRUSTERS, each with its own servo angle and throttle.
+    /// Three layers run per fixed step:
+    ///
+    /// 1. A 6-state discrete LQR (height error, vertical velocity, roll, roll rate, pitch, pitch rate)
+    ///    sensed from 4 corner-down raycasts, producing vertical/roll/pitch acceleration commands.
+    /// 2. A control-allocation QP that turns those commands — plus the driver's forward and yaw demand
+    ///    — into the 8 thruster controls, under servo range/rate and thrust range/rate limits. See
+    ///    <see cref="ThrusterAllocation"/>: 8 controls against 5 reachable wrench components, so the
+    ///    rig is over-actuated and the solve is what decides how the work is shared.
+    /// 3. Two 2-state double-integrator servo LQRs (turret yaw, barrel pitch) tracking a moving target.
+    ///
+    /// WASD is a wrench demand routed through the allocation, not a force bolted onto the hull, so the
+    /// tank drives by tilting its thrusters and the QP cancels the pitch-up torque that creates.
+    /// Self-assembles ground/hull/turret/barrel/target primitives in <see cref="Start"/> (sceneless,
+    /// like the other demos).
     /// </summary>
     public class HoverTankDemo : MonoBehaviour
     {
@@ -39,7 +45,9 @@ namespace LinearAlgebraDemos
         [Range(0.1f, 50f)] public float qTiltRate = 8f;
         [Range(0.001f, 5f)] public float rThrust = 0.02f;   // LQR cost on commanded vertical accel (m/s^2), not force
         [Range(0.01f, 20f)] public float rTorque = 0.4f;    // LQR cost on commanded angular accel (rad/s^2), not torque
-        [Range(1000f, 20000f)] public float maxCornerForce = 9000f;
+
+        [Header("Servo thrusters (allocated by QP)")]
+        public ThrusterSettings thrusters = ThrusterSettings.Default;
 
         [Header("Turret servo (yaw)")]
         public Transform target;
@@ -56,9 +64,9 @@ namespace LinearAlgebraDemos
         [Range(-30f, 10f)] public float barrelMinPitchDeg = -5f;
         [Range(10f, 85f)] public float barrelMaxPitchDeg = 60f;
 
-        [Header("Drive (plain forces, not LQR)")]
-        [Range(1000f, 20000f)] public float driveForce = 6000f;
-        [Range(1000f, 20000f)] public float steerTorque = 4000f;
+        [Header("Driver demand (routed through the allocation)")]
+        [Range(1000f, 40000f)] public float driveForce = 9000f;
+        [Range(1000f, 40000f)] public float steerTorque = 9000f;
 
         [Header("Auto target orbit (used when target is unassigned)")]
         public bool autoOrbitTarget = true;
@@ -66,11 +74,16 @@ namespace LinearAlgebraDemos
         [Range(0.5f, 6f)] public float orbitHeight = 3f;
         [Range(0.05f, 2f)] public float orbitSpeed = 0.5f;
 
+        static readonly string[] MountNames = { "FL", "FR", "BL", "BR" };
+
         // self-assembled scene objects (Start)
         GameObject groundGO, hullGO, turretGO, barrelGO, autoTargetGO;
         Rigidbody rb;
-        Vector3[] cornerLocal;     // FL, FR, BL, BR — local offsets from hull center
-        float cornerDX, cornerDZ;  // horizontal corner offsets shared by sensing + mixer
+        Vector3[] cornerLocal;     // FL, FR, BL, BR — METRIC offsets from the hull center of mass
+        float cornerDX, cornerDZ;  // horizontal corner offsets shared by sensing + allocation
+        float4 mountX, mountY, mountZ;
+        float mountArm;            // lever arm the torque residual scale is measured against
+        float4 thrusterHealth = new float4(1f);
         Vector3 spawnPosition;
         Vector3 orbitCenter;
         float orbitAngle;
@@ -81,8 +94,12 @@ namespace LinearAlgebraDemos
         NativeArray<float> cornerHeights;
         NativeArray<float> prevCornerHeights;
         NativeArray<float> hoverState;    // [height err, height rate, roll, roll rate, pitch, pitch rate]
-        NativeArray<float> cornerForces;  // FL, FR, BL, BR
         NativeArray<float> hoverOut;      // [0] iters [1] converged [2] residual [3] rank-deficient
+
+        // allocation buffers
+        NativeArray<float> controls;      // 4 servo angles (rad) then 4 throttles (fraction)
+        NativeArray<QPInfo> allocOut;
+        NativeArray<float> wrenchOut;     // 5 demanded then 5 achieved (N, N*m)
 
         // turret / barrel servo buffers
         floatMxN turretK, barrelK;
@@ -92,7 +109,7 @@ namespace LinearAlgebraDemos
         NativeArray<float> turretOut;     // [0] converged
         NativeArray<float> barrelOut;     // [0] converged
 
-        bool hoverDivergedLogged, turretDivergedLogged, barrelDivergedLogged;
+        bool hoverDivergedLogged, allocFailedLogged, turretDivergedLogged, barrelDivergedLogged;
         float frameMs;
 
         void Start()
@@ -104,8 +121,11 @@ namespace LinearAlgebraDemos
             cornerHeights = new NativeArray<float>(4, Allocator.Persistent);
             prevCornerHeights = new NativeArray<float>(4, Allocator.Persistent);
             hoverState = new NativeArray<float>(6, Allocator.Persistent);
-            cornerForces = new NativeArray<float>(4, Allocator.Persistent);
             hoverOut = new NativeArray<float>(4, Allocator.Persistent);
+
+            controls = new NativeArray<float>(ThrusterAllocation.ControlCount, Allocator.Persistent);
+            allocOut = new NativeArray<QPInfo>(1, Allocator.Persistent);
+            wrenchOut = new NativeArray<float>(10, Allocator.Persistent);
 
             turretK = new floatMxN(1, 2, Allocator.Persistent);
             barrelK = new floatMxN(1, 2, Allocator.Persistent);
@@ -117,6 +137,7 @@ namespace LinearAlgebraDemos
             barrelOut = new NativeArray<float>(1, Allocator.Persistent);
 
             for (int i = 0; i < 4; i++) prevCornerHeights[i] = targetRideHeight;
+            ResetControls();
         }
 
         void OnDestroy()
@@ -126,8 +147,11 @@ namespace LinearAlgebraDemos
             if (cornerHeights.IsCreated) cornerHeights.Dispose();
             if (prevCornerHeights.IsCreated) prevCornerHeights.Dispose();
             if (hoverState.IsCreated) hoverState.Dispose();
-            if (cornerForces.IsCreated) cornerForces.Dispose();
             if (hoverOut.IsCreated) hoverOut.Dispose();
+
+            if (controls.IsCreated) controls.Dispose();
+            if (allocOut.IsCreated) allocOut.Dispose();
+            if (wrenchOut.IsCreated) wrenchOut.Dispose();
 
             if (turretK.IsCreated) turretK.Dispose();
             if (barrelK.IsCreated) barrelK.Dispose();
@@ -171,6 +195,11 @@ namespace LinearAlgebraDemos
                 new Vector3(+cornerDX, cornerY, -cornerDZ),   // BR
             };
 
+            mountX = new float4(cornerLocal[0].x, cornerLocal[1].x, cornerLocal[2].x, cornerLocal[3].x);
+            mountY = new float4(cornerLocal[0].y, cornerLocal[1].y, cornerLocal[2].y, cornerLocal[3].y);
+            mountZ = new float4(cornerLocal[0].z, cornerLocal[1].z, cornerLocal[2].z, cornerLocal[3].z);
+            mountArm = math.max(cornerDX, cornerDZ);
+
             turretGO = GameObject.CreatePrimitive(PrimitiveType.Cube);
             turretGO.name = "HoverTank_Turret";
             turretGO.transform.SetParent(hullGO.transform, worldPositionStays: false);
@@ -200,6 +229,25 @@ namespace LinearAlgebraDemos
             }
         }
 
+        // cornerLocal is metric; the hull cube carries a render scale, so TransformPoint would
+        // multiply the offsets by it and put the mounts (and the lever arms the allocation is
+        // solved against) outside the hull.
+        Vector3 MountWorld(int i) => hullGO.transform.position + hullGO.transform.rotation * cornerLocal[i];
+
+        void ResetControls()
+        {
+            float maxThrust = Mathf.Max(thrusters.maxThrust, 1f);
+            float trim = Mathf.Clamp(
+                hullMass * -Physics.gravity.y / (4f * maxThrust),
+                Mathf.Clamp01(thrusters.minThrust / maxThrust), 1f);
+
+            for (int i = 0; i < 4; i++)
+            {
+                controls[i] = 0f;
+                controls[4 + i] = trim;
+            }
+        }
+
         void FixedUpdate()
         {
             float dt = Time.fixedDeltaTime;
@@ -217,7 +265,7 @@ namespace LinearAlgebraDemos
             // ---- sense: 4 corner-down raycasts ----
             for (int i = 0; i < 4; i++)
             {
-                Vector3 world = hullGO.transform.TransformPoint(cornerLocal[i]) + Vector3.down * 0.02f;
+                Vector3 world = MountWorld(i) + Vector3.down * 0.02f;
                 cornerHeights[i] = Physics.Raycast(world, Vector3.down, out RaycastHit hit, rayLength)
                     ? hit.distance : rayLength;
             }
@@ -239,13 +287,20 @@ namespace LinearAlgebraDemos
             var job = new HoverTankStepJob
             {
                 CornerHeights = cornerHeights, PrevCornerHeights = prevCornerHeights,
-                HoverState = hoverState, CornerForces = cornerForces,
+                HoverState = hoverState,
                 HoverK = hoverK, HoverLqrState = hoverLqr, HoverOut = hoverOut,
                 Mass = hullMass, RollInertia = rollInertia, PitchInertia = pitchInertia,
                 Gravity = -Physics.gravity.y,
                 QHeight = qHeight, QHeightRate = qHeightRate, QTilt = qTilt, QTiltRate = qTiltRate,
-                RThrust = rThrust, RTorque = rTorque, MaxCornerForce = maxCornerForce,
+                RThrust = rThrust, RTorque = rTorque,
                 TargetRideHeight = targetRideHeight, CornerDX = cornerDX, CornerDZ = cornerDZ, Dt = dt,
+
+                Controls = controls, AllocOut = allocOut, WrenchOut = wrenchOut,
+                Settings = thrusters, Health = thrusterHealth,
+                MountX = mountX, MountY = mountY, MountZ = mountZ, MountArm = mountArm,
+                DriveDemand = Input.GetAxis("Vertical") * driveForce,
+                YawDemand = Input.GetAxis("Horizontal") * steerTorque,
+                TiltCos = Vector3.Dot(hullGO.transform.up, Vector3.up),
 
                 TurretState = turretState, TurretK = turretK, TurretLqrState = turretLqr, TurretOut = turretOut,
                 QYawAngle = qYawAngle, QYawRate = qYawRate, RYawTorque = rYawTorque, MaxYawAccel = maxYawAccel,
@@ -266,33 +321,32 @@ namespace LinearAlgebraDemos
             turretLqr = job.TurretLqrState;
             barrelLqr = job.BarrelLqrState;
 
-            LogOnceIfDiverged(hoverOut[1] == 1f, ref hoverDivergedLogged, "hover");
-            LogOnceIfDiverged(turretOut[0] == 1f, ref turretDivergedLogged, "turret yaw");
-            LogOnceIfDiverged(barrelOut[0] == 1f, ref barrelDivergedLogged, "barrel pitch");
+            LogOnceIfDiverged(hoverOut[1] == 1f, ref hoverDivergedLogged, "hover LQR");
+            LogOnceIfDiverged(allocOut[0].status == QPStatus.Optimal, ref allocFailedLogged, "allocation QP");
+            LogOnceIfDiverged(turretOut[0] == 1f, ref turretDivergedLogged, "turret yaw LQR");
+            LogOnceIfDiverged(barrelOut[0] == 1f, ref barrelDivergedLogged, "barrel pitch LQR");
 
-            // ---- apply corner thrust ----
+            // ---- apply thrust: one force per thruster, at its mount, along its servo direction ----
+            // AddForceAtPosition reproduces both the force and its moment about the center of mass,
+            // which is the wrench the allocation solved for.
             for (int i = 0; i < 4; i++)
             {
-                Vector3 world = hullGO.transform.TransformPoint(cornerLocal[i]);
-                rb.AddForceAtPosition(Vector3.up * cornerForces[i], world, ForceMode.Force);
+                float3 dir = ThrusterAllocation.ForceDirection(controls[i]);
+                float magnitude = controls[4 + i] * thrusters.maxThrust * thrusterHealth[i];
+                Vector3 worldDir = hullGO.transform.TransformDirection(new Vector3(dir.x, dir.y, dir.z));
+                rb.AddForceAtPosition(worldDir * magnitude, MountWorld(i), ForceMode.Force);
             }
 
             // ---- apply turret/barrel kinematic pose (servo states, not physics) ----
             turretGO.transform.localRotation = Quaternion.Euler(0f, turretState[0] * Mathf.Rad2Deg, 0f);
             barrelGO.transform.localRotation = Quaternion.Euler(-barrelState[0] * Mathf.Rad2Deg, 0f, 0f);
-
-            // ---- WASD drive: plain forces, not LQR ----
-            float fwd = Input.GetAxis("Vertical");
-            float steer = Input.GetAxis("Horizontal");
-            rb.AddForce(hullGO.transform.forward * fwd * driveForce, ForceMode.Force);
-            rb.AddTorque(Vector3.up * steer * steerTorque, ForceMode.Force);
         }
 
         static void LogOnceIfDiverged(bool converged, ref bool alreadyLogged, string label)
         {
             if (converged) { alreadyLogged = false; return; }
             if (alreadyLogged) return;
-            UnityEngine.Debug.LogWarning($"HoverTankDemo: {label} LQR failed to converge, holding last gains");
+            UnityEngine.Debug.LogWarning($"HoverTankDemo: {label} did not converge, holding the last solution");
             alreadyLogged = true;
         }
 
@@ -303,9 +357,34 @@ namespace LinearAlgebraDemos
             Gizmos.color = Color.cyan;
             for (int i = 0; i < 4; i++)
             {
-                Vector3 world = hullGO.transform.TransformPoint(cornerLocal[i]);
+                Vector3 world = MountWorld(i);
                 Gizmos.DrawLine(world, world + Vector3.down * cornerHeights[i]);
                 Gizmos.DrawSphere(world + Vector3.down * cornerHeights[i], 0.08f);
+            }
+
+            float angLo = Mathf.Min(thrusters.servoMinDeg, thrusters.servoMaxDeg) * Mathf.Deg2Rad;
+            float angHi = Mathf.Max(thrusters.servoMinDeg, thrusters.servoMaxDeg) * Mathf.Deg2Rad;
+
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 mount = MountWorld(i);
+                bool live = thrusterHealth[i] > 0f;
+
+                // servo travel arc, swept on the exhaust side
+                Gizmos.color = new Color(0.4f, 0.4f, 0.45f);
+                Vector3 prev = ExhaustPoint(mount, angLo, 0.7f);
+                for (int k = 1; k <= 10; k++)
+                {
+                    Vector3 next = ExhaustPoint(mount, Mathf.Lerp(angLo, angHi, k / 10f), 0.7f);
+                    Gizmos.DrawLine(prev, next);
+                    prev = next;
+                }
+
+                // commanded exhaust, length proportional to throttle
+                float throttle = controls[4 + i];
+                Gizmos.color = live ? Color.Lerp(Color.green, Color.red, throttle) : Color.gray;
+                Gizmos.DrawLine(mount, ExhaustPoint(mount, controls[i], 0.5f + 3f * throttle));
+                Gizmos.DrawSphere(mount, 0.09f);
             }
 
             Gizmos.color = Color.yellow;
@@ -314,19 +393,51 @@ namespace LinearAlgebraDemos
                 Gizmos.DrawLine(barrelGO.transform.position, aimTarget.position);
         }
 
+        // The nozzle points opposite the force it produces: down at servo angle 0.
+        Vector3 ExhaustPoint(Vector3 mount, float angle, float length)
+        {
+            float3 dir = ThrusterAllocation.ForceDirection(angle);
+            return mount + hullGO.transform.TransformDirection(new Vector3(-dir.x, -dir.y, -dir.z)) * length;
+        }
+
         void OnGUI()
         {
-            GUILayout.BeginArea(new Rect(10, 10, 420, 380), GUI.skin.box);
-            GUILayout.Label($"Hover tank LQR — {frameMs:F3} ms/frame (3x6 hover + 2x 1x2 servo)");
+            GUILayout.BeginArea(new Rect(10, 10, 520, 580), GUI.skin.box);
+            GUILayout.Label($"Hover tank — {frameMs:F3} ms/frame (3x6 hover LQR + 8-control allocation QP + 2x servo LQR)");
             GUILayout.Label($"hover: converged={hoverOut[1] == 1f}  iters={hoverOut[0]:F0}  residual={hoverOut[2]:E1}");
             GUILayout.Label($"state: h={hoverState[0]:F2} v={hoverState[1]:F2} roll={hoverState[2] * Mathf.Rad2Deg:F1} pitch={hoverState[4] * Mathf.Rad2Deg:F1}");
-            GUILayout.Label($"corners: FL={cornerForces[0]:F0} FR={cornerForces[1]:F0} BL={cornerForces[2]:F0} BR={cornerForces[3]:F0} N");
+
+            QPInfo alloc = allocOut[0];
+            GUILayout.Label($"alloc QP: {alloc.status}  pivots={alloc.iterations}  obj={alloc.objective:E2}");
+            GUILayout.Label($"force  N   lift {wrenchOut[5]:F0}/{wrenchOut[0]:F0}   drive {wrenchOut[6]:F0}/{wrenchOut[1]:F0}   (achieved/demanded)");
+            GUILayout.Label($"torque Nm  pitch {wrenchOut[7]:F0}/{wrenchOut[2]:F0}   yaw {wrenchOut[8]:F0}/{wrenchOut[3]:F0}   roll {wrenchOut[9]:F0}/{wrenchOut[4]:F0}");
+
+            for (int i = 0; i < 4; i++)
+            {
+                float throttle = controls[4 + i];
+                GUILayout.Label($"{MountNames[i]}  servo {controls[i] * Mathf.Rad2Deg,6:F1} deg   thrust {throttle * thrusters.maxThrust,7:F0} N ({throttle * 100f:F0}%)"
+                    + (thrusterHealth[i] > 0f ? "" : "   DEAD"));
+            }
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("thrusters", GUILayout.Width(70));
+            for (int i = 0; i < 4; i++)
+            {
+                bool live = thrusterHealth[i] > 0f;
+                bool now = GUILayout.Toggle(live, MountNames[i], GUILayout.Width(50));
+                if (now != live) thrusterHealth[i] = now ? 1f : 0f;
+            }
+            GUILayout.EndHorizontal();
+
             GUILayout.Label($"turret: yaw={turretState[0] * Mathf.Rad2Deg:F1}deg converged={turretOut[0] == 1f}   barrel: pitch={barrelState[0] * Mathf.Rad2Deg:F1}deg converged={barrelOut[0] == 1f}");
 
             targetRideHeight = LabeledSlider($"ride height {targetRideHeight:F2}", targetRideHeight, 0.5f, 6f);
             qHeight = LabeledSlider($"Q height {qHeight:F0}", qHeight, 1f, 200f);
             qTilt = LabeledSlider($"Q tilt {qTilt:F0}", qTilt, 1f, 300f);
             rThrust = LabeledSlider($"R accel {rThrust:F3}", rThrust, 0.001f, 5f);
+            thrusters.servoMaxDeg = LabeledSlider($"servo range +{thrusters.servoMaxDeg:F0}deg", thrusters.servoMaxDeg, 0f, 85f);
+            thrusters.servoRateDeg = LabeledSlider($"servo rate {thrusters.servoRateDeg:F0}deg/s", thrusters.servoRateDeg, 15f, 720f);
+            thrusters.thrustRate = LabeledSlider($"thrust rate {thrusters.thrustRate:F0}N/s", thrusters.thrustRate, 2000f, 400000f);
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Kick"))
@@ -342,6 +453,8 @@ namespace LinearAlgebraDemos
                 rb.angularVelocity = Vector3.zero;
                 turretState[0] = 0f; turretState[1] = 0f;
                 barrelState[0] = 0f; barrelState[1] = 0f;
+                thrusterHealth = new float4(1f);
+                ResetControls();
             }
             autoOrbitTarget = GUILayout.Toggle(autoOrbitTarget, "orbit target");
             GUILayout.EndHorizontal();
@@ -351,7 +464,7 @@ namespace LinearAlgebraDemos
         static float LabeledSlider(string label, float v, float lo, float hi)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(140));
+            GUILayout.Label(label, GUILayout.Width(170));
             v = GUILayout.HorizontalSlider(v, lo, hi, GUILayout.Width(220));
             GUILayout.EndHorizontal();
             return v;
@@ -359,15 +472,15 @@ namespace LinearAlgebraDemos
     }
 
     /// <summary>
-    /// Per-fixed-step control law: rebuilds the hover state from corner ride heights,
-    /// warm-solves the hover attitude LQR (3 acceleration inputs: vertical, roll angular,
-    /// pitch angular -- converted to force/torque via mass/inertia and mixed into 4
-    /// clamped corner thrust forces); then warm-solves and Euler-integrates two
-    /// independent 2-state double-integrator servo loops (turret yaw, barrel pitch)
-    /// tracking the supplied desired angles. All three LQR solves re-run every step
-    /// (warm <see cref="floatLQRState"/>, cheap once converged) to showcase the
-    /// warm-start path, matching CartPole/Drone. Caller must RunByRef and copy the
-    /// three LqrState fields back.
+    /// Per-fixed-step control law. Rebuilds the hover state from corner ride heights and warm-solves
+    /// the 6-state hover LQR (3 acceleration commands: vertical, roll, pitch); turns those plus the
+    /// driver's forward/yaw demand into a hull-frame <see cref="HoverWrench"/>; allocates that wrench
+    /// onto 4 servo angles and 4 throttles with <see cref="ThrusterAllocation.Solve"/>; then
+    /// warm-solves and Euler-integrates two independent 2-state double-integrator servo loops (turret
+    /// yaw, barrel pitch). All three LQR solves re-run every step (warm <see cref="floatLQRState"/>,
+    /// cheap once converged) to showcase the warm-start path, matching CartPole/Drone.
+    ///
+    /// Caller must RunByRef and copy the three LqrState fields back.
     /// </summary>
     [BurstCompile(CompileSynchronously = true)]
     public struct HoverTankStepJob : IJob
@@ -376,13 +489,23 @@ namespace LinearAlgebraDemos
         [ReadOnly] public NativeArray<float> CornerHeights;   // FL, FR, BL, BR
         public NativeArray<float> PrevCornerHeights;
         public NativeArray<float> HoverState;
-        public NativeArray<float> CornerForces;
         public floatMxN HoverK;
         public floatLQRState HoverLqrState;
         public NativeArray<float> HoverOut;
         public float Mass, RollInertia, PitchInertia, Gravity;
-        public float QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque, MaxCornerForce;
+        public float QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque;
         public float TargetRideHeight, CornerDX, CornerDZ, Dt;
+
+        // thruster allocation
+        public NativeArray<float> Controls;
+        public NativeArray<QPInfo> AllocOut;
+        public NativeArray<float> WrenchOut;
+        public ThrusterSettings Settings;
+        public float4 Health, MountX, MountY, MountZ;
+        public float MountArm;
+        public float DriveDemand, YawDemand;
+        /// <summary>cos of the hull's tilt from world up, for the gravity feedforward.</summary>
+        public float TiltCos;
 
         // turret yaw servo
         public NativeArray<float> TurretState;
@@ -404,7 +527,7 @@ namespace LinearAlgebraDemos
             // ---- reconstruct the 6-state hover/attitude estimate from corner heights ----
             // roll = rotation about the forward axis, pitch = rotation about the right axis;
             // both derived purely from differenced corner ride heights (and their finite-
-            // difference rates), matching the torque/mixer sign convention below exactly.
+            // difference rates), matching the torque sign convention the allocation uses.
             float hFL = CornerHeights[0], hFR = CornerHeights[1], hBL = CornerHeights[2], hBR = CornerHeights[3];
             float heightErr = 0.25f * (hFL + hFR + hBL + hBR) - TargetRideHeight;
 
@@ -451,24 +574,29 @@ namespace LinearAlgebraDemos
                 uPitchAccel -= HoverK[2, j] * HoverState[j];
             }
 
-            // F = m*(gravity feedforward + commanded accel), tau = I*alpha -- convert the LQR's
-            // acceleration commands to force/torque here, THEN mix (same physics as before, just
-            // scaled through B = dt*I instead of dt/mass -- keeps the DARE well-conditioned).
-            float fTotal = Mass * (Gravity + uVertAccel);
-            float tauRoll = RollInertia * uRollAccel;
-            float tauPitch = PitchInertia * uPitchAccel;
+            // ---- demanded hull-frame wrench ----
+            // The gravity feedforward is divided by the hull's tilt cosine because thrust is bolted to
+            // the hull and gravity is not; floored so a near-vertical hull cannot demand unbounded lift.
+            var desired = new HoverWrench
+            {
+                Lift = Mass * (Gravity / math.max(TiltCos, 0.35f) + uVertAccel),
+                Drive = DriveDemand,
+                Pitch = PitchInertia * uPitchAccel,
+                Yaw = YawDemand,
+                Roll = RollInertia * uRollAccel,
+            };
 
-            // mixer: [total thrust, roll torque, pitch torque] -> 4 corner forces, clamped to [0, max]
-            // (thrust can only push away from the ground). Inverse of tauRoll = CornerDX*(right-left),
-            // tauPitch = CornerDZ*(back-front) — the exact torque this mix produces about the hull.
-            float fFL = fTotal * 0.25f - tauRoll / (4f * CornerDX) - tauPitch / (4f * CornerDZ);
-            float fFR = fTotal * 0.25f + tauRoll / (4f * CornerDX) - tauPitch / (4f * CornerDZ);
-            float fBL = fTotal * 0.25f - tauRoll / (4f * CornerDX) + tauPitch / (4f * CornerDZ);
-            float fBR = fTotal * 0.25f + tauRoll / (4f * CornerDX) + tauPitch / (4f * CornerDZ);
-            CornerForces[0] = math.clamp(fFL, 0f, MaxCornerForce);
-            CornerForces[1] = math.clamp(fFR, 0f, MaxCornerForce);
-            CornerForces[2] = math.clamp(fBL, 0f, MaxCornerForce);
-            CornerForces[3] = math.clamp(fBR, 0f, MaxCornerForce);
+            // ---- allocation: 8 controls onto the 5 reachable wrench components ----
+            var z = new floatN(Controls);   // view, no copy
+            ThrusterRig rig = ThrusterAllocation.BuildRig(in Settings, MountX, MountY, MountZ, Health,
+                in z, Dt, Mass * Gravity, MountArm);
+            AllocOut[0] = ThrusterAllocation.Solve(in rig, in desired, ref z, 0);
+
+            HoverWrench got = ThrusterAllocation.Wrench(in rig, in z);
+            WrenchOut[0] = desired.Lift; WrenchOut[1] = desired.Drive; WrenchOut[2] = desired.Pitch;
+            WrenchOut[3] = desired.Yaw; WrenchOut[4] = desired.Roll;
+            WrenchOut[5] = got.Lift; WrenchOut[6] = got.Drive; WrenchOut[7] = got.Pitch;
+            WrenchOut[8] = got.Yaw; WrenchOut[9] = got.Roll;
 
             // ---- turret yaw servo: 2-state double integrator tracking DesiredYaw ----
             BuildServoModel(Dt, QYawAngle, QYawRate, RYawTorque, Allocator.Temp, out var Ay, out var By, out var Qy, out var Ry);
