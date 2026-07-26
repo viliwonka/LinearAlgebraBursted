@@ -212,11 +212,11 @@ namespace LinearAlgebraDemos
         [BurstCompile(CompileSynchronously = true)]
         public struct SolveJob : IJob
         {
-            // Not marked [ReadOnly]: this is a single IJob, so the attribute buys no scheduling here,
-            // and read-only-ness survives NativeArray.Reinterpret -- which is how a fit that views the
-            // cloud as a matrix trips the safety system at runtime, where no test would catch it.
-            public NativeArray<float3> Pts3;
-            public NativeArray<float2> Pts2;
+            // The cloud is never written. [ReadOnly] survives NativeArray.Reinterpret, so it also
+            // pins that no fit on this path builds a WRITABLE matrix view over the caller's points --
+            // the mistake that made PCA.fitLine unusable from inside a job.
+            [ReadOnly] public NativeArray<float3> Pts3;
+            [ReadOnly] public NativeArray<float2> Pts2;
             public NativeArray<FitOut> Out;
 
             public bool Is2D;
