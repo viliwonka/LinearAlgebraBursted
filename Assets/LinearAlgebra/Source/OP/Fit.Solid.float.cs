@@ -37,25 +37,13 @@ namespace BULA
     {
         // ---- residual functors ---------------------------------------------------------------------
 
-        /// <summary>Orthogonal-distance residual to an infinite cylinder: p = (q, d, radius), 7 params.</summary>
-        public struct floatCylinderResidual : IfloatResidualFunction
-        {
-            public NativeArray<float3> Points;
-
-            public void Residuals(in floatN p, ref floatN r)
-            {
-                var q = new float3(p[0], p[1], p[2]);
-                var d = math.normalize(new float3(p[3], p[4], p[5]));
-                float rad = p[6];
-
-                for (int i = 0; i < Points.Length; i++)
-                {
-                    float3 v = Points[i] - q;
-                    float ax = math.dot(v, d);
-                    r[i] = math.length(v - ax * d) - rad;
-                }
-            }
-        }
+        // Cylinder, torus and capsule have no residual functor of their own: their residual IS their
+        // shape's Distance, so they go through floatShapeResidual<TModel>. The sign difference does
+        // not matter -- Gauss-Newton forms JᵀJ and Jᵀr, and d = |r| contributes sign² = 1 to the
+        // first and sign(r)·|r| = r to the second, so both normal equations are identical.
+        //
+        // The CONE keeps its own, below, because there the two are genuinely different functions
+        // rather than the same one up to sign.
 
         /// <summary>
         /// Orthogonal-distance residual to a cone SURFACE: p = (apex, d, halfAngle), 7 params. The
@@ -83,56 +71,6 @@ namespace BULA
         }
 
         /// <summary>Orthogonal-distance residual to a torus: p = (centre, d, R, r), 8 params.</summary>
-        public struct floatTorusResidual : IfloatResidualFunction
-        {
-            public NativeArray<float3> Points;
-
-            public void Residuals(in floatN p, ref floatN res)
-            {
-                var c = new float3(p[0], p[1], p[2]);
-                var d = math.normalize(new float3(p[3], p[4], p[5]));
-                float R = p[6], r = p[7];
-
-                for (int i = 0; i < Points.Length; i++)
-                {
-                    float3 v = Points[i] - c;
-                    float ax = math.dot(v, d);
-                    float rad = math.length(v - ax * d);
-                    float dr = rad - R;
-                    res[i] = math.sqrt(dr * dr + ax * ax) - r;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Orthogonal-distance residual to a capsule (a segment swept by a sphere): p = (a, b, radius),
-        /// 7 params. The distance-to-SEGMENT is piecewise -- it is C¹ but not C² where the barrel meets
-        /// each cap -- so Gauss-Newton curvature is discontinuous for points sitting exactly on that
-        /// seam. In practice LM's damping absorbs it; a fit whose points cluster on the seam is the one
-        /// case to warm-start.
-        /// </summary>
-        public struct floatCapsuleResidual : IfloatResidualFunction
-        {
-            public NativeArray<float3> Points;
-
-            public void Residuals(in floatN p, ref floatN r)
-            {
-                var a = new float3(p[0], p[1], p[2]);
-                var b = new float3(p[3], p[4], p[5]);
-                float rad = p[6];
-
-                float3 seg = b - a;
-                float len2 = math.dot(seg, seg);
-
-                for (int i = 0; i < Points.Length; i++)
-                {
-                    float3 v = Points[i] - a;
-                    float t = len2 > (float)0 ? math.saturate(math.dot(v, seg) / len2) : (float)0;
-                    r[i] = math.length(v - t * seg) - rad;
-                }
-            }
-        }
-
         // ---- entry points --------------------------------------------------------------------------
 
         /// <summary>
@@ -176,7 +114,7 @@ namespace BULA
             p[3] = axisDir.x;   p[4] = axisDir.y;   p[5] = axisDir.z;
             p[6] = radius;
 
-            var f = new floatCylinderResidual { Points = points };
+            var f = new floatShapeResidual<floatCylinder> { Points = points };
             var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             axisPoint = new float3(p[0], p[1], p[2]);
@@ -256,7 +194,7 @@ namespace BULA
             p[3] = axisDir.x; p[4] = axisDir.y; p[5] = axisDir.z;
             p[6] = majorRadius; p[7] = minorRadius;
 
-            var f = new floatTorusResidual { Points = points };
+            var f = new floatShapeResidual<floatTorus> { Points = points };
             var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             center = new float3(p[0], p[1], p[2]);
@@ -295,7 +233,7 @@ namespace BULA
             p[3] = b.x; p[4] = b.y; p[5] = b.z;
             p[6] = radius;
 
-            var f = new floatCapsuleResidual { Points = points };
+            var f = new floatShapeResidual<floatCapsule> { Points = points };
             var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             a = new float3(p[0], p[1], p[2]);

@@ -334,7 +334,14 @@ namespace BULA
 
         // ---- capsule -------------------------------------------------------------------------------
 
-        /// <summary>Capsule: the segment <see cref="A"/>..<see cref="B"/> swept by <see cref="Radius"/>.</summary>
+        /// <summary>
+        /// Capsule: the segment <see cref="A"/>..<see cref="B"/> swept by <see cref="Radius"/>.
+        ///
+        /// Distance-to-SEGMENT is piecewise -- C¹ but not C² where the barrel meets each cap -- so
+        /// Gauss-Newton curvature is discontinuous for points sitting exactly on that seam. LM's
+        /// damping absorbs it in practice; a fit whose points cluster on the seam is the one case
+        /// worth warm-starting.
+        /// </summary>
         public struct fProxyCapsule : IfProxyEstimable3, IfProxyParametric3, IfProxySampleable3
         {
             public fProxy3 A;

@@ -37,25 +37,13 @@ namespace BULA
     {
         // ---- residual functors ---------------------------------------------------------------------
 
-        /// <summary>Orthogonal-distance residual to an infinite cylinder: p = (q, d, radius), 7 params.</summary>
-        public struct doubleCylinderResidual : IdoubleResidualFunction
-        {
-            public NativeArray<double3> Points;
-
-            public void Residuals(in doubleN p, ref doubleN r)
-            {
-                var q = new double3(p[0], p[1], p[2]);
-                var d = math.normalize(new double3(p[3], p[4], p[5]));
-                double rad = p[6];
-
-                for (int i = 0; i < Points.Length; i++)
-                {
-                    double3 v = Points[i] - q;
-                    double ax = math.dot(v, d);
-                    r[i] = math.length(v - ax * d) - rad;
-                }
-            }
-        }
+        // Cylinder, torus and capsule have no residual functor of their own: their residual IS their
+        // shape's Distance, so they go through doubleShapeResidual<TModel>. The sign difference does
+        // not matter -- Gauss-Newton forms JᵀJ and Jᵀr, and d = |r| contributes sign² = 1 to the
+        // first and sign(r)·|r| = r to the second, so both normal equations are identical.
+        //
+        // The CONE keeps its own, below, because there the two are genuinely different functions
+        // rather than the same one up to sign.
 
         /// <summary>
         /// Orthogonal-distance residual to a cone SURFACE: p = (apex, d, halfAngle), 7 params. The
@@ -83,56 +71,6 @@ namespace BULA
         }
 
         /// <summary>Orthogonal-distance residual to a torus: p = (centre, d, R, r), 8 params.</summary>
-        public struct doubleTorusResidual : IdoubleResidualFunction
-        {
-            public NativeArray<double3> Points;
-
-            public void Residuals(in doubleN p, ref doubleN res)
-            {
-                var c = new double3(p[0], p[1], p[2]);
-                var d = math.normalize(new double3(p[3], p[4], p[5]));
-                double R = p[6], r = p[7];
-
-                for (int i = 0; i < Points.Length; i++)
-                {
-                    double3 v = Points[i] - c;
-                    double ax = math.dot(v, d);
-                    double rad = math.length(v - ax * d);
-                    double dr = rad - R;
-                    res[i] = math.sqrt(dr * dr + ax * ax) - r;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Orthogonal-distance residual to a capsule (a segment swept by a sphere): p = (a, b, radius),
-        /// 7 params. The distance-to-SEGMENT is piecewise -- it is C¹ but not C² where the barrel meets
-        /// each cap -- so Gauss-Newton curvature is discontinuous for points sitting exactly on that
-        /// seam. In practice LM's damping absorbs it; a fit whose points cluster on the seam is the one
-        /// case to warm-start.
-        /// </summary>
-        public struct doubleCapsuleResidual : IdoubleResidualFunction
-        {
-            public NativeArray<double3> Points;
-
-            public void Residuals(in doubleN p, ref doubleN r)
-            {
-                var a = new double3(p[0], p[1], p[2]);
-                var b = new double3(p[3], p[4], p[5]);
-                double rad = p[6];
-
-                double3 seg = b - a;
-                double len2 = math.dot(seg, seg);
-
-                for (int i = 0; i < Points.Length; i++)
-                {
-                    double3 v = Points[i] - a;
-                    double t = len2 > (double)0 ? math.saturate(math.dot(v, seg) / len2) : (double)0;
-                    r[i] = math.length(v - t * seg) - rad;
-                }
-            }
-        }
-
         // ---- entry points --------------------------------------------------------------------------
 
         /// <summary>
@@ -176,7 +114,7 @@ namespace BULA
             p[3] = axisDir.x;   p[4] = axisDir.y;   p[5] = axisDir.z;
             p[6] = radius;
 
-            var f = new doubleCylinderResidual { Points = points };
+            var f = new doubleShapeResidual<doubleCylinder> { Points = points };
             var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             axisPoint = new double3(p[0], p[1], p[2]);
@@ -256,7 +194,7 @@ namespace BULA
             p[3] = axisDir.x; p[4] = axisDir.y; p[5] = axisDir.z;
             p[6] = majorRadius; p[7] = minorRadius;
 
-            var f = new doubleTorusResidual { Points = points };
+            var f = new doubleShapeResidual<doubleTorus> { Points = points };
             var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             center = new double3(p[0], p[1], p[2]);
@@ -295,7 +233,7 @@ namespace BULA
             p[3] = b.x; p[4] = b.y; p[5] = b.z;
             p[6] = radius;
 
-            var f = new doubleCapsuleResidual { Points = points };
+            var f = new doubleShapeResidual<doubleCapsule> { Points = points };
             var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             a = new double3(p[0], p[1], p[2]);
