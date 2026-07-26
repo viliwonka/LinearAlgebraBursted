@@ -150,6 +150,14 @@ namespace BULA
 
                 double blowup = BlowupThreshold(in Q, in R);
                 double tol = (double)Consts.fProxySqrtEps;
+
+                // Floor for the relative convergence test, taken from the problem DATA rather than a
+                // fixed 1. S scales with Q and R, so eps times their norm is where the iterate stops
+                // carrying signal; below that, dividing by ‖S‖ would amplify roundoff instead of
+                // measuring progress. A fixed floor of 1 makes the test ABSOLUTE whenever ‖S‖ < 1 --
+                // the normal case for a filter covariance, where the first small doubling step then
+                // reports Converged immediately.
+                double residFloor = (FrobeniusNorm(in Q) + FrobeniusNorm(in R)) * (double)Consts.fProxyEpsilon;
                 int budget = maxIter > 0 ? maxIter : SDA_MAX_ITER;
 
                 var GH = new fProxyMxN(n, n, Allocator.Temp);
@@ -202,7 +210,8 @@ namespace BULA
                     if (!(newNorm <= blowup)) { status = RiccatiStatus.Diverged; residual = double.PositiveInfinity; break; }
 
                     double diffNorm = FrobeniusNormDiff(in HkNext, in Hk);
-                    residual = diffNorm / math.max(1.0, newNorm);
+                    double denom = math.max(newNorm, residFloor);
+                    residual = denom > 0 ? diffNorm / denom : 0.0;
 
                     Ak.CopyFrom(in AkNext);
                     Gk.CopyFrom(in GkNext);

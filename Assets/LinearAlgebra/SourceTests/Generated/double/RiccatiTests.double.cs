@@ -29,6 +29,7 @@ public class doubleRiccatiTests
             ScalarGoldenRatio,       // A=B=Q=R=[1] -> S solves s^2-s-1=0 -> golden ratio (1+sqrt5)/2
             ResidualDoubleIntegrator,// S satisfies S = Q + AᵀSA - AᵀSB(R+BᵀSB)⁻¹BᵀSA to tolerance
             Determinism,             // two back-to-back dares on the same instance -> bit-identical S
+            SmallCovarianceScale,    // S(aQ, aR) == a*S(Q, R): the test must stay RELATIVE as ||S||->0
         }
 
         public TestType Type;
@@ -115,6 +116,49 @@ public class doubleRiccatiTests
                             AssertClose(S1[i, j], S2[i, j], (double)0);
 
                     A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); S1.Dispose(); S2.Dispose();
+                    break;
+                }
+
+                case TestType.SmallCovarianceScale:
+                {
+                    // The DARE is homogeneous in (Q, R): scaling both by a scales S by exactly a.
+                    // So the same instance solved large and solved small must agree after rescaling.
+                    //
+                    // This is what a convergence floor of 1 breaks. Below ||S|| = 1 the relative test
+                    // silently becomes ABSOLUTE, the first doubling step already sits under it, and
+                    // dare reports Converged on an S that is still essentially Q. Filter covariances
+                    // live entirely in that regime, which is why Kalman.steadyStateGain rescales its
+                    // inputs before calling here.
+                    const double alpha = 1e-4;
+
+                    var A = new doubleMxN(2, 2, Allocator.Temp);
+                    A[0, 0] = (double)1; A[0, 1] = (double)1; A[1, 0] = (double)0; A[1, 1] = (double)1;
+                    var B = new doubleMxN(2, 1, Allocator.Temp);
+                    B[0, 0] = (double)0; B[1, 0] = (double)1;
+
+                    var Q = new doubleMxN(2, 2, Allocator.Temp);
+                    Q[0, 0] = (double)1; Q[1, 1] = (double)1;
+                    var R = new doubleMxN(1, 1, Allocator.Temp);
+                    R[0, 0] = (double)1;
+
+                    var Sbig = new doubleMxN(2, 2, Allocator.Temp);
+                    AssertTrue(Riccati.dare(in A, in B, in Q, in R, ref Sbig).Solved);
+
+                    var Qs = new doubleMxN(2, 2, Allocator.Temp);
+                    Qs[0, 0] = (double)alpha; Qs[1, 1] = (double)alpha;
+                    var Rs = new doubleMxN(1, 1, Allocator.Temp);
+                    Rs[0, 0] = (double)alpha;
+
+                    var Ssmall = new doubleMxN(2, 2, Allocator.Temp);
+                    AssertTrue(Riccati.dare(in A, in B, in Qs, in Rs, ref Ssmall).Solved);
+
+                    for (int i = 0; i < 2; i++)
+                        for (int j = 0; j < 2; j++)
+                            AssertClose(Ssmall[i, j] / (double)alpha, Sbig[i, j],
+                                        math.abs(Sbig[i, j]) * (double)0.01 + (double)0.01);
+
+                    A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); Sbig.Dispose();
+                    Qs.Dispose(); Rs.Dispose(); Ssmall.Dispose();
                     break;
                 }
             }
