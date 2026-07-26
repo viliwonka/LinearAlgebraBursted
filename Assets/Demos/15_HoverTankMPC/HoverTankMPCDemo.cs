@@ -28,23 +28,28 @@ namespace LinearAlgebraDemos
     /// hull; what comes back is a range in the sensor's own frame, and turning that into anything
     /// world-referenced uses the estimate.
     ///
-    /// Every axis reaches the thrusters through one control-allocation solve:
+    /// Every axis reaches the thrusters through two solves:
     ///
-    /// 1. A 6-state discrete LQR (ride-height error, closing rate, roll, roll rate, pitch, pitch rate)
-    ///    read off the estimate, producing vertical/roll/pitch acceleration commands.
-    /// 2. A control-allocation QP that turns those commands plus the driver's forward/strafe/yaw
-    ///    demand — and the braking and idle-damping terms, which are wrench demands like everything
-    ///    else rather than forces written onto the rigid body — into the 12 thruster controls, under
+    /// 1. A receding-horizon MPC over 12 body states, re-solved every fixed step, producing all six
+    ///    acceleration commands at once. Three things the LQR cascade it replaced could not express:
+    ///    the terrain ahead is a PER-STAGE reference, so the tank climbs before the rise reaches it;
+    ///    the proximity rangers are SOFT STATE ROWS on predicted displacement, so it stops short of a
+    ///    wall; and the rig's authority is a HARD INPUT BOUND, so it plans against what the thrusters
+    ///    can deliver instead of demanding a wrench and letting the allocation clip it.
+    /// 2. A control-allocation QP that turns the resulting wrench into the 12 thruster controls, under
     ///    servo range/rate and thrust range/rate limits. See <see cref="GimbalAllocation"/>: 12
     ///    controls against 6 wrench components, so the rig is over-actuated and the solve is what
     ///    decides how the work is shared.
     ///
+    /// The driver never writes a force. W/S, Q/E and A/D set a VELOCITY REFERENCE the MPC tracks, and
+    /// hands-off is a zero reference — which is what settles the tank, with no separate damping term to
+    /// fight the controller for those axes.
+    ///
     /// Thrust is augmented near the ground by <see cref="GroundEffect"/>, per nozzle, from a downward
     /// ray at each exhaust plane — so a tilted hull is pushed harder on its low side. The same four
     /// factors scale the force applied to the rigid body AND the allocation's Jacobian, so the two
-    /// agree exactly and the demanded wrench is delivered at any height. Their mean also enters the
-    /// hover model's vertical input column, which softens the hover gain slightly near the ground; see
-    /// <see cref="HoverTankMPCStepJob.Execute"/> for why that is a choice and not a measurement.
+    /// agree exactly and the demanded wrench is delivered at any height. The MPC's own model does not
+    /// carry them: it is LTI and built once, and the allocation already inverts the gain exactly.
     ///
     /// HULL TILT AND TERRAIN SLOPE ARE SEPARATE QUANTITIES HERE, and the panel prints both. The
     /// attitude the hover loop regulates comes from gravity and the magnetic field, so the tank is
@@ -64,6 +69,33 @@ namespace LinearAlgebraDemos
         /// <summary>Commanded ride height range, metres. Mouse Y and the panel slider share it.</summary>
         public const float RideHeightMin = 0.5f, RideHeightMax = 6f;
 
+        /// <summary>
+        /// The MPC's state layout. sFwd/sLat/sVert/yaw are DISPLACEMENTS FROM NOW — zero in every x0,
+        /// because the frame is re-anchored each solve — while roll and pitch are absolute attitudes
+        /// the controller regulates to zero. sVert is WORLD vertical, deliberately not ride-height
+        /// error: rising terrain is a disturbance in clearance coordinates, which
+        /// <see cref="MPC.solve"/> has no term for, and a moving reference in world coordinates, which
+        /// it does.
+        ///
+        /// Laid out as (displacement, rate) PAIRS in the same order as the inputs below:
+        /// <see cref="BuildMpcModel"/> writes A and B from that pairing alone, so reordering these
+        /// breaks the model silently.
+        /// </summary>
+        public const int SFwd = 0, VFwd = 1, SLat = 2, VLat = 3, SVert = 4, VVert = 5,
+                         Roll = 6, RollRate = 7, Pitch = 8, PitchRate = 9, Yaw = 10, YawRate = 11;
+
+        /// <summary>State dimension of the MPC model.</summary>
+        public const int StateCount = 12;
+
+        /// <summary>The MPC's inputs: accelerations, hull-frame for the linear three.</summary>
+        public const int AFwd = 0, ALat = 1, AVert = 2, AlphaRoll = 3, AlphaPitch = 4, AlphaYaw = 5;
+
+        /// <summary>Input dimension of the MPC model.</summary>
+        public const int InputCount = 6;
+
+        /// <summary>Number of soft state rows: +/- forward and +/- lateral displacement.</summary>
+        public const int SoftRows = 4;
+
         [Header("Hull")]
         [Range(300f, 5000f)] public float hullMass = 1500f;
         [Range(1f, 4f)] public float hullHalfWidth = 2f;
@@ -72,15 +104,22 @@ namespace LinearAlgebraDemos
         [Range(RideHeightMin, RideHeightMax)] public float targetRideHeight = 2f;
         [Range(2f, 20f)] public float rayLength = 8f;
 
-        [Header("Hover LQR")]
+        [Header("Hover MPC")]
         [Range(500f, 6000f)] public float rollInertia = 2100f;
         [Range(500f, 8000f)] public float pitchInertia = 4600f;
-        [Range(1f, 200f)] public float qHeight = 40f;
-        [Range(0.1f, 50f)] public float qHeightRate = 6f;
-        [Range(1f, 300f)] public float qTilt = 90f;
+        [Range(500f, 12000f)] public float yawInertia = 6500f;
+        [Tooltip("Prediction stages. The horizon is this times the fixed timestep, and it is how far ahead the terrain preview and the anti-collision rows can see. CONSTRUCTION-TIME: changing it during play does nothing, since the condensed horizon is built once.")]
+        [Range(5, 40)] public int horizon = 25;
+        [Tooltip("Weight on forward/lateral displacement and heading. Small on purpose: these are pure integrator modes, and a weight of exactly zero would leave them undetectable and the terminal Riccati solve ill-posed. Reads physically as gentle station-keeping, not as tracking.")]
+        [Range(0.001f, 5f)] public float qPos = 0.05f;
+        [Range(0.1f, 100f)] public float qVel = 12f;
+        [Range(1f, 400f)] public float qVert = 120f;
+        [Range(0.1f, 100f)] public float qVertRate = 14f;
+        [Range(1f, 400f)] public float qTilt = 90f;
         [Range(0.1f, 50f)] public float qTiltRate = 8f;
-        [Range(0.001f, 5f)] public float rThrust = 0.02f;   // LQR cost on commanded vertical accel (m/s^2), not force
-        [Range(0.01f, 20f)] public float rTorque = 0.4f;    // LQR cost on commanded angular accel (rad/s^2), not torque
+        [Range(0.1f, 100f)] public float qYawRate = 10f;
+        [Range(0.001f, 5f)] public float rLinear = 0.02f;   // cost on commanded linear accel (m/s^2), not force
+        [Range(0.01f, 20f)] public float rAngular = 0.4f;   // cost on commanded angular accel (rad/s^2), not torque
 
         [Header("Gimballed thrusters (allocated by QP)")]
         public GimbalSettings thrusters = GimbalSettings.Default;
@@ -96,25 +135,26 @@ namespace LinearAlgebraDemos
         [Tooltip("Effective nozzle radius R in the Cheeseman-Bennett model, metres. The augmentation is worth 1.07x at a nozzle height of R and 1.33x at R/2, so this sets the ride height band over which the effect is felt.")]
         [Range(0.5f, 4f)] public float nozzleRadius = 2f;
 
-        [Header("Driver demand (routed through the allocation)")]
+        [Header("Driver demand (a reference the MPC tracks)")]
+        [Tooltip("Top forward speed W/S asks for, m/s. Hands off, the reference is zero, which is what settles the tank -- there is no separate damping term.")]
+        [Range(2f, 40f)] public float maxFwdSpeed = 14f;
+        [Tooltip("Top sideways speed Q/E asks for, m/s. Lateral authority is bought out of the same thrust that carries the hull, so this stays under maxFwdSpeed.")]
+        [Range(1f, 30f)] public float maxLatSpeed = 9f;
+        [Range(0.2f, 4f)] public float maxYawRate = 1.4f;
+        [Tooltip("Peak forward force, newtons. This is the MPC's own input bound, so the controller plans against it instead of demanding a wrench the rig cannot deliver.")]
         [Range(1000f, 40000f)] public float driveForce = 9000f;
-        [Tooltip("Peak sideways force, newtons. Lateral authority is bought out of the same thrust that carries the hull, so this stays under driveForce.")]
         [Range(1000f, 40000f)] public float strafeForce = 7000f;
         [Range(1000f, 40000f)] public float steerTorque = 9000f;
-        [Tooltip("Peak braking force. Kept below driveForce so the brake cannot starve attitude control.")]
-        [Range(1000f, 30000f)] public float brakeForce = 8000f;
-        [Tooltip("Braking force per m/s of along-track speed, so the brake eases off as the tank slows.")]
-        [Range(200f, 20000f)] public float brakeGain = 3000f;
-        [Tooltip("Braking yaw moment per rad/s of yaw rate. Capped at steerTorque, so the brake can never out-demand the stick.")]
-        [Range(500f, 30000f)] public float brakeYawGain = 12000f;
+        [Tooltip("Share of total thrust the roll/pitch input bounds assume is available for torque. The rest is carrying the hull.")]
+        [Range(0.05f, 1f)] public float torqueAuthority = 0.35f;
+        [Tooltip("Metres held back from whatever a proximity ranger reports, as a soft state row on predicted displacement.")]
+        [Range(0.2f, 6f)] public float collisionMargin = 1.5f;
+        [Tooltip("Exact-penalty price per metre of predicted intrusion past a ranger's bound. Must out-price the velocity tracking that is driving the tank at the obstacle, which is why it is far above the library default: that default assumes cost matrices at O(1), and these run to O(100).")]
+        [Range(1e3f, 1e7f)] public float collisionPenalty = 1e5f;
         [Tooltip("Steer command per unit of accumulated mouse X. A locked cursor gives unbounded deltas, so this wants to stay small.")]
         [Range(0.01f, 1f)] public float lookSensitivity = 0.12f;
         [Tooltip("Metres of commanded ride height per unit of mouse Y. Push forward to climb.")]
         [Range(0.01f, 1f)] public float climbSensitivity = 0.15f;
-        [Tooltip("Idle forward damping, newtons per m/s. Fades out as W/S is pressed; 0 lets the tank free-float.")]
-        [Range(0f, 5000f)] public float idleLinearGain = 1500f;
-        [Tooltip("Idle yaw damping, newton-metres per rad/s. Fades out as steering appears; 0 lets the tank free-float.")]
-        [Range(0f, 15000f)] public float idleAngularGain = 6500f;
 
         [Header("Chase camera")]
         [Range(3f, 30f)] public float camDistance = 12f;
@@ -159,10 +199,13 @@ namespace LinearAlgebraDemos
         bool lastBrake;
 
         // hover loop buffers (persistent — never allocated inside the job)
-        floatMxN hoverK;
-        floatLQRState hoverLqr;
-        NativeArray<float> hoverState;    // [height err, closing rate, roll, roll rate, pitch, pitch rate]
-        NativeArray<float> hoverOut;      // [0] iters [1] converged [2] residual [3] rank-deficient
+        /// <summary>Built ONCE in <see cref="Start"/>: the model is LTI, so the condensed horizon and
+        /// its terminal Riccati solve never need rebuilding. Only the reference, x0 and the soft-row
+        /// bounds move per step.</summary>
+        floatMPCState mpc;
+        NativeArray<float> mpcX0, mpcRef, mpcU0, mpcSoft, previewOut;
+        NativeArray<MPCInfo> mpcOut;
+        NativeArray<float> hoverState;    // [height err, closing rate, roll, roll rate, pitch, pitch rate] — panel only
 
         // allocation buffers
         NativeArray<float> controls;      // 4 pitch angles, 4 yaw angles (rad), then 4 throttles
@@ -204,10 +247,8 @@ namespace LinearAlgebraDemos
         {
             BuildScene();
 
-            hoverK = new floatMxN(3, 6, Allocator.Persistent);
-            hoverLqr = new floatLQRState(6, Allocator.Persistent);
             hoverState = new NativeArray<float>(6, Allocator.Persistent);
-            hoverOut = new NativeArray<float>(4, Allocator.Persistent);
+            BuildMpc();
 
             controls = new NativeArray<float>(GimbalAllocation.ControlCount, Allocator.Persistent);
             allocOut = new NativeArray<QPInfo>(1, Allocator.Persistent);
@@ -248,12 +289,124 @@ namespace LinearAlgebraDemos
             ResetControls();
         }
 
+        /// <summary>
+        /// Builds the receding-horizon state ONCE. Everything here is fixed for the life of the demo:
+        /// the model is LTI, the soft rows select fixed states, and the input bounds are the rig's own
+        /// authority. Only the RHS of those rows moves at runtime, via <see cref="MPC.setSoftBound"/>.
+        ///
+        /// Rebuilding instead would cost a fresh terminal Riccati solve plus the whole condensing every
+        /// step — measured at 7.08 ms for a horizon of this shape against a 0.45 ms warm solve, which
+        /// is what settled the architecture (see DEVLOG.md).
+        /// </summary>
+        void BuildMpc()
+        {
+            float dt = Time.fixedDeltaTime;
+
+            BuildMpcModel(dt, qPos, qVel, qVert, qVertRate, qTilt, qTiltRate, qYawRate, rLinear, rAngular,
+                          Allocator.Temp, out var A, out var B, out var Q, out var R);
+
+            var uLo = new floatN(InputCount, Allocator.Temp, true);
+            var uHi = new floatN(InputCount, Allocator.Temp, true);
+
+            // The rig's real authority, in acceleration units. Handing these to the MPC as hard input
+            // bounds is a capability the cascade did not have: the controller now plans against what
+            // the thrusters can actually deliver rather than demanding a wrench and letting the
+            // allocation clip it.
+            float totalThrust = GimbalAllocation.Thrusters * thrusters.maxThrust;
+            float aFwd = driveForce / hullMass;
+            float aLat = strafeForce / hullMass;
+            float aUp = math.max(0.5f, totalThrust / hullMass - (-Physics.gravity.y));
+            float torque = torqueAuthority * totalThrust;
+
+            uLo[AFwd] = -aFwd; uHi[AFwd] = aFwd;
+            uLo[ALat] = -aLat; uHi[ALat] = aLat;
+            // Thrust points broadly up, so the tank cannot pull itself down harder than free fall.
+            uLo[AVert] = -(-Physics.gravity.y); uHi[AVert] = aUp;
+            uLo[AlphaRoll] = -torque * hullHalfWidth / rollInertia;
+            uHi[AlphaRoll] = torque * hullHalfWidth / rollInertia;
+            uLo[AlphaPitch] = -torque * hullHalfLength / pitchInertia;
+            uHi[AlphaPitch] = torque * hullHalfLength / pitchInertia;
+            uLo[AlphaYaw] = -steerTorque / yawInertia; uHi[AlphaYaw] = steerTorque / yawInertia;
+
+            // Anti-collision. C selects predicted displacement; only its bound moves at runtime.
+            var C = new floatMxN(SoftRows, StateCount, Allocator.Temp);
+            C[0, SFwd] = 1f; C[1, SFwd] = -1f; C[2, SLat] = 1f; C[3, SLat] = -1f;
+            var d = new floatN(SoftRows, Allocator.Temp, true);
+            for (int i = 0; i < SoftRows; i++) d[i] = rayLength;   // nothing seen yet
+
+            // The penalty is passed EXPLICITLY. A metre of intrusion has to out-price the velocity
+            // tracking pushing the tank at the obstacle, which is worth roughly
+            // qVel * horizon / (horizon*dt)^2 per metre here — thousands, not the O(1)-scaled cost
+            // matrices the library's own default assumes. Left at the default the tank accelerates
+            // into a wall at full throttle and merely reports the violation.
+            mpc = new floatMPCState(StateCount, InputCount, horizon, Allocator.Persistent,
+                                    in A, in B, in Q, in R, in uLo, in uHi,
+                                    in C, in d, collisionPenalty, 1f);
+
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose();
+            uLo.Dispose(); uHi.Dispose(); C.Dispose(); d.Dispose();
+
+            mpcX0 = new NativeArray<float>(StateCount, Allocator.Persistent);
+            mpcRef = new NativeArray<float>(horizon * StateCount, Allocator.Persistent);
+            mpcU0 = new NativeArray<float>(InputCount, Allocator.Persistent);
+            mpcSoft = new NativeArray<float>(SoftRows, Allocator.Persistent);
+            mpcOut = new NativeArray<MPCInfo>(1, Allocator.Persistent);
+            previewOut = new NativeArray<float>(4, Allocator.Persistent);
+        }
+
+        /// <summary>
+        /// Six decoupled double integrators — along-track, lateral, vertical, roll, pitch, yaw — driven
+        /// by ACCELERATION inputs: B = dt on each rate row, no mass/inertia scaling (chosen so B's
+        /// entries stay near O(dt) instead of O(dt/mass), which would leave the terminal Riccati solve
+        /// badly scaled for a heavy hull). Gravity feedforward and the accel -> force/torque conversion
+        /// are the caller's job, not this model's. Time-invariant: nothing here depends on the
+        /// operating point. Allocates A/B/Q/R fresh with <paramref name="allocator"/> (caller disposes).
+        ///
+        /// <paramref name="qPos"/> weights the three integrator modes (forward, lateral, heading).
+        /// It must be nonzero: at exactly zero those modes are undetectable from Q and the terminal
+        /// DARE is ill-posed.
+        /// </summary>
+        public static void BuildMpcModel(float dt, float qPos, float qVel, float qVert, float qVertRate,
+            float qTilt, float qTiltRate, float qYawRate, float rLinear, float rAngular,
+            Allocator allocator, out floatMxN A, out floatMxN B, out floatMxN Q, out floatMxN R)
+        {
+            // Cleared, NOT uninitialized: everything below writes only the nonzero entries, and the
+            // four-argument overload's flag means "leave it uninitialized".
+            A = new floatMxN(StateCount, StateCount, allocator);
+            B = new floatMxN(StateCount, InputCount, allocator);
+            Q = new floatMxN(StateCount, StateCount, allocator);
+            R = new floatMxN(InputCount, InputCount, allocator);
+
+            for (int i = 0; i < StateCount; i++) A[i, i] = 1f;
+            for (int p = 0; p < InputCount; p++)
+            {
+                A[2 * p, 2 * p + 1] = dt;      // position row integrates its own rate
+                B[2 * p + 1, p] = dt;          // rate row is driven by its own acceleration
+            }
+
+            Q[SFwd, SFwd] = qPos; Q[VFwd, VFwd] = qVel;
+            Q[SLat, SLat] = qPos; Q[VLat, VLat] = qVel;
+            Q[SVert, SVert] = qVert; Q[VVert, VVert] = qVertRate;
+            Q[Roll, Roll] = qTilt; Q[RollRate, RollRate] = qTiltRate;
+            Q[Pitch, Pitch] = qTilt; Q[PitchRate, PitchRate] = qTiltRate;
+            Q[Yaw, Yaw] = qPos; Q[YawRate, YawRate] = qYawRate;
+
+            R[AFwd, AFwd] = rLinear; R[ALat, ALat] = rLinear; R[AVert, AVert] = rLinear;
+            R[AlphaRoll, AlphaRoll] = rAngular;
+            R[AlphaPitch, AlphaPitch] = rAngular;
+            R[AlphaYaw, AlphaYaw] = rAngular;
+        }
+
         void OnDestroy()
         {
-            if (hoverK.IsCreated) hoverK.Dispose();
-            hoverLqr.Dispose();
+            mpc.Dispose();
+            if (mpcX0.IsCreated) mpcX0.Dispose();
+            if (mpcRef.IsCreated) mpcRef.Dispose();
+            if (mpcU0.IsCreated) mpcU0.Dispose();
+            if (mpcSoft.IsCreated) mpcSoft.Dispose();
+            if (mpcOut.IsCreated) mpcOut.Dispose();
+            if (previewOut.IsCreated) previewOut.Dispose();
             if (hoverState.IsCreated) hoverState.Dispose();
-            if (hoverOut.IsCreated) hoverOut.Dispose();
 
             if (controls.IsCreated) controls.Dispose();
             if (allocOut.IsCreated) allocOut.Dispose();
@@ -595,8 +748,8 @@ namespace LinearAlgebraDemos
             if (mouseCaptured)
             {
                 // Both axes come from the same per-rendered-frame delta source. Mouse X is accumulated
-                // for the next fixed step; mouse Y moves the ride-height SETPOINT the hover LQR is
-                // already regulating, so climbing costs no extra control channel. A locked cursor makes
+                // for the next fixed step; mouse Y moves the ride-height SETPOINT the MPC is already
+                // tracking, so climbing costs no extra control channel. A locked cursor makes
                 // those deltas unbounded, so the two sensitivities carry all of the feel.
                 lookX += Input.GetAxis("Mouse X");
                 targetRideHeight += Input.GetAxis("Mouse Y") * climbSensitivity;
@@ -690,27 +843,36 @@ namespace LinearAlgebraDemos
             // reads the rigid body or the transform.
             var job = new HoverTankMPCStepJob
             {
-                HoverState = hoverState,
-                HoverK = hoverK, HoverLqrState = hoverLqr, HoverOut = hoverOut,
+                Mpc = mpc,
+                MpcX0 = mpcX0, MpcRef = mpcRef, MpcU0 = mpcU0, MpcSoft = mpcSoft,
+                MpcOut = mpcOut, PreviewOut = previewOut, Horizon = horizon,
                 Mass = hullMass, RollInertia = rollInertia, PitchInertia = pitchInertia,
-                Gravity = -Physics.gravity.y,
-                QHeight = qHeight, QHeightRate = qHeightRate, QTilt = qTilt, QTiltRate = qTiltRate,
-                RThrust = rThrust, RTorque = rTorque,
+                YawInertia = yawInertia, Gravity = -Physics.gravity.y,
                 Dt = dt,
+
+                Rpy = estimate.Rpy,
+                GroundNormal = estimate.GroundNormal,
+                VelWorld = estimate.Velocity,
+                ForwardSpeed = estimate.ForwardSpeed,
+                LateralSpeed = estimate.LateralSpeed,
+                YawRate = estimate.YawRate,
+                RollRate = estimate.RollRate,
+                PitchRate = estimate.PitchRate,
+                Clearance = estimate.Clearance,
+                TiltCos = estimate.TiltCos,
+                GroundValid = estimate.GroundValid,
+                TargetRideHeight = targetRideHeight,
+
+                ProxSensed = proxSensed, CollisionMargin = collisionMargin,
 
                 Controls = controls, AllocOut = allocOut, WrenchOut = wrenchOut,
                 Settings = thrusters, Health = thrusterHealth,
                 MountX = mountX, MountY = mountY, MountZ = mountZ, MountArm = mountArm,
-                DriveInput = Input.GetAxis("Vertical"), DriveForce = driveForce,
-                StrafeInput = lastStrafe, StrafeForce = strafeForce,
-                SteerInput = lastSteer, SteerTorque = steerTorque,
+                DriveInput = Input.GetAxis("Vertical"),
+                StrafeInput = lastStrafe,
+                SteerInput = lastSteer,
                 BrakeInput = lastBrake,
-                BrakeForce = brakeForce, BrakeGain = brakeGain, BrakeYawGain = brakeYawGain,
-                IdleLinearGain = idleLinearGain, IdleAngularGain = idleAngularGain,
-                ForwardSpeed = estimate.ForwardSpeed,
-                LateralSpeed = estimate.LateralSpeed,
-                YawRate = estimate.YawRate,
-                TiltCos = estimate.TiltCos,
+                MaxFwdSpeed = maxFwdSpeed, MaxLatSpeed = maxLatSpeed, MaxYawRate = maxYawRate,
 
                 NozzleHeights = nozzleHeights,
                 NozzleRadius = groundEffect ? nozzleRadius : 0f,
@@ -722,9 +884,11 @@ namespace LinearAlgebraDemos
             sw.Stop();
             ctrlMs = (float)sw.Elapsed.TotalMilliseconds;
 
-            hoverLqr = job.HoverLqrState;
+            // The warm-start plan and working set advanced inside the job; without this copy every
+            // step would solve cold.
+            mpc = job.Mpc;
 
-            LogOnceIfDiverged(hoverOut[1] == 1f, ref hoverDivergedLogged, "hover LQR");
+            LogOnceIfDiverged(mpcOut[0].status != MPCStatus.Fallback, ref hoverDivergedLogged, "hover MPC");
             LogOnceIfDiverged(allocOut[0].status == QPStatus.Optimal, ref allocFailedLogged, "allocation QP");
             LogOnceIfDiverged(kfOut[0].status == KFStatus.Ok && kfOut[1].status == KFStatus.Ok
                               && kfOut[2].status == KFStatus.Ok, ref estimatorFailedLogged, "state estimator");
@@ -941,12 +1105,16 @@ namespace LinearAlgebraDemos
         void OnGUI()
         {
             GUILayout.BeginArea(PanelRect, GUI.skin.box);
-            GUILayout.Label($"Hover tank over terrain — {estMs:F3} ms sense+EKF, {ctrlMs:F3} ms control (15-state EKF + 3x6 hover LQR + 12-control allocation QP)");
+            GUILayout.Label($"Hover tank over terrain — {estMs:F3} ms sense+EKF, {ctrlMs:F3} ms control (15-state EKF + {StateCount}-state MPC over {horizon} stages + 12-control allocation QP)");
             GUILayout.Label($"Mouse X turn   Mouse Y climb   W/S drive   Q/E strafe   A/D yaw   SPACE brake   ESC {(mouseCaptured ? "release cursor" : "RESUME DRIVING")}");
 
             DrawEstimatorPanel();
 
-            GUILayout.Label($"hover: converged={hoverOut[1] == 1f}  iters={hoverOut[0]:F0}  residual={hoverOut[2]:E1}   state: h={hoverState[0]:F2} roll={hoverState[2] * Mathf.Rad2Deg:F1} pitch={hoverState[4] * Mathf.Rad2Deg:F1}");
+            MPCInfo m = mpcOut[0];
+            GUILayout.Label($"MPC: {m.status}  pivots={m.iterations}  activeSetChanges={m.activeSetChanges}  slack={m.maxSlackViolation:F3} m  horizon {horizon * Time.fixedDeltaTime:F2} s");
+            GUILayout.Label($"preview: ground {previewOut[1]:F1} deg along track, rising {previewOut[0]:+0.00;-0.00;0.00} m by the horizon end   —   the tank climbs before the clearance error appears");
+            GUILayout.Label($"anti-collision: tightest {ProximityRig.Names[(int)previewOut[2]]} at {previewOut[3]:F1} m of room (margin {collisionMargin:F1} m)");
+            GUILayout.Label($"commanded accel  fwd {mpcU0[AFwd],6:F2}  lat {mpcU0[ALat],6:F2}  vert {mpcU0[AVert],6:F2} m/s^2   roll {mpcU0[AlphaRoll],6:F2}  pitch {mpcU0[AlphaPitch],6:F2}  yaw {mpcU0[AlphaYaw],6:F2} rad/s^2");
 
             QPInfo alloc = allocOut[0];
             GUILayout.Label($"alloc QP: {alloc.status}  pivots={alloc.iterations}  obj={alloc.objective:E2}");
@@ -958,7 +1126,7 @@ namespace LinearAlgebraDemos
             GUILayout.BeginHorizontal();
             groundEffect = GUILayout.Toggle(groundEffect, "ground effect", GUILayout.Width(110));
             GUILayout.Label(groundEffect
-                ? $"x{MeanGroundGain():F3} into B   FL {groundOut[0]:F2} FR {groundOut[1]:F2} BL {groundOut[2]:F2} BR {groundOut[3]:F2}   clamp x{GroundEffect.MaxFactor:F2} under {GroundEffect.ClampHeight(nozzleRadius):F2} m"
+                ? $"mean x{MeanGroundGain():F3} (allocation only)   FL {groundOut[0]:F2} FR {groundOut[1]:F2} BL {groundOut[2]:F2} BR {groundOut[3]:F2}   clamp x{GroundEffect.MaxFactor:F2} under {GroundEffect.ClampHeight(nozzleRadius):F2} m"
                 : "off — thrusters deliver exactly what they are commanded at any height");
             GUILayout.EndHorizontal();
 
@@ -981,14 +1149,12 @@ namespace LinearAlgebraDemos
 
             targetRideHeight = LabeledSlider($"ride height {targetRideHeight:F2}", targetRideHeight, RideHeightMin, RideHeightMax);
             nozzleRadius = LabeledSlider($"nozzle radius {nozzleRadius:F2}m", nozzleRadius, 0.5f, 4f);
-            qTilt = LabeledSlider($"Q tilt {qTilt:F0}", qTilt, 1f, 300f);
             lookSensitivity = LabeledSlider($"mouse sens {lookSensitivity:F2}", lookSensitivity, 0.01f, 1f);
             climbSensitivity = LabeledSlider($"climb sens {climbSensitivity:F2}m", climbSensitivity, 0.01f, 1f);
-            strafeForce = LabeledSlider($"strafe force {strafeForce:F0}N", strafeForce, 1000f, 40000f);
-            brakeForce = LabeledSlider($"brake force {brakeForce:F0}N", brakeForce, 1000f, 30000f);
-            brakeYawGain = LabeledSlider($"brake yaw {brakeYawGain:F0}Nm/(rad/s)", brakeYawGain, 500f, 30000f);
-            idleLinearGain = LabeledSlider($"idle linear {idleLinearGain:F0}N/(m/s)", idleLinearGain, 0f, 5000f);
-            idleAngularGain = LabeledSlider($"idle yaw {idleAngularGain:F0}Nm/(rad/s)", idleAngularGain, 0f, 15000f);
+            maxFwdSpeed = LabeledSlider($"top speed {maxFwdSpeed:F0} m/s", maxFwdSpeed, 2f, 40f);
+            maxLatSpeed = LabeledSlider($"top strafe {maxLatSpeed:F0} m/s", maxLatSpeed, 1f, 30f);
+            maxYawRate = LabeledSlider($"top yaw rate {maxYawRate * Mathf.Rad2Deg:F0} deg/s", maxYawRate, 0.2f, 4f);
+            collisionMargin = LabeledSlider($"collision margin {collisionMargin:F1}m", collisionMargin, 0.2f, 6f);
             thrusters.servoMaxDeg = LabeledSlider($"gimbal range +{thrusters.servoMaxDeg:F0}deg", thrusters.servoMaxDeg, 0f, GimbalAllocation.MaxGimbalDeg);
             thrusters.servoRateDeg = LabeledSlider($"servo rate {thrusters.servoRateDeg:F0}deg/s", thrusters.servoRateDeg, 15f, 720f);
 
@@ -1014,24 +1180,25 @@ namespace LinearAlgebraDemos
             GUILayout.EndArea();
         }
 
-        // What is driving the yaw demand this step (see HoverTankMPCStepJob.Execute), and whether the
-        // allocation actually delivered it. Yaw authority is bought with forward thrust the hover loop
-        // also wants, so a hard mouse flick can exceed what the rig can produce — say so rather than
-        // letting the hull drift off heading unexplained.
+        // What the yaw-rate REFERENCE is this step, and whether the allocation actually delivered the
+        // torque the MPC asked for. Yaw authority is bought with forward thrust the hover loop also
+        // wants, so a hard mouse flick can exceed what the rig can produce — say so rather than letting
+        // the hull drift off heading unexplained.
         string YawOwner()
         {
             string owner;
-            if (lastBrake) owner = "BRAKE (space)";
-            else if (Mathf.Abs(lastSteer) > HoverTankMPCStepJob.StickDeadzone) owner = "DRIVER (mouse + A/D)";
+            if (lastBrake) owner = "BRAKE (space): rate ref 0";
+            else if (Mathf.Abs(lastSteer) > 0.02f) owner = "DRIVER (mouse + A/D)";
             else if (!mouseCaptured) owner = "cursor released";
-            else owner = idleAngularGain > 0f ? "idle damping" : "free";
+            else owner = "hands off: rate ref 0";
 
             float torqueScale = hullMass * -Physics.gravity.y * mountArm;
             bool shortfall = Mathf.Abs(wrenchOut[10] - wrenchOut[4]) > 0.05f * torqueScale;
             return shortfall ? owner + "  [YAW SATURATED]" : owner;
         }
 
-        /// <summary>Mean of the four nozzle augmentations — the factor the hover model's B carries.</summary>
+        /// <summary>Mean of the four nozzle augmentations. Panel only: the augmentation reaches the
+        /// allocation's Jacobian per nozzle and never enters the MPC's model.</summary>
         float MeanGroundGain() => 0.25f * (groundOut[0] + groundOut[1] + groundOut[2] + groundOut[3]);
 
         // Beams that came back this step and how many of them the fitted plane kept. Too few returns
@@ -1126,56 +1293,77 @@ namespace LinearAlgebraDemos
 
     /// <summary>
     /// Per-fixed-step control law, downstream of <see cref="TankEstimatorJob"/> and blind to anything
-    /// it did not produce. Warm-solves the 6-state hover LQR over the estimated hover state (3
-    /// acceleration commands: vertical, roll, pitch); resolves the driver's forward/strafe/yaw/brake
-    /// inputs into the rest of the demanded hull-frame <see cref="GimbalWrench"/>; then allocates that
-    /// onto 4 pitch angles, 4 yaw angles and 4 throttles with <see cref="GimbalAllocation.Solve"/>.
-    /// The LQR re-runs every step (warm <see cref="floatLQRState"/>, cheap once converged) to showcase
-    /// the warm-start path.
+    /// it did not produce. One receding-horizon <see cref="MPC.solve"/> over 12 body states produces
+    /// all six acceleration commands at once; those become the demanded hull-frame
+    /// <see cref="GimbalWrench"/>, which <see cref="GimbalAllocation.Solve"/> then shares across 4
+    /// pitch angles, 4 yaw angles and 4 throttles.
     ///
-    /// This step's <see cref="GroundEffect"/> augmentation enters the allocation's Jacobian, where it
-    /// is exact, and the hover model's vertical input column, where it is a deliberate detune — see
-    /// <see cref="Execute"/>.
+    /// The MPC's own model is LTI and is built ONCE (see <see cref="HoverTankMPCDemo.BuildMpcModel"/>);
+    /// only the reference, the initial state and the soft-row bounds are rebuilt per step. Terrain
+    /// ahead enters as a per-stage <see cref="SVert"/> reference and anti-collision as a soft row whose
+    /// bound tracks the proximity rangers through <see cref="MPC.setSoftBound"/> — neither re-condenses.
     ///
-    /// Caller must RunByRef and copy HoverLqrState back.
+    /// The <see cref="GroundEffect"/> augmentation enters the allocation's Jacobian, where it is exact.
+    /// It deliberately does NOT enter this model: doing so would make B time-varying and cost a full
+    /// re-condense every step, and the allocation already inverts the gain exactly, so a unit of
+    /// commanded acceleration buys one unit at any height.
+    ///
+    /// Caller must RunByRef and copy Mpc back — it carries the warm-start plan and working set.
     /// </summary>
     [BurstCompile(CompileSynchronously = true)]
     public struct HoverTankMPCStepJob : IJob
     {
-        /// <summary>Stick deflection below which the driver is considered hands-off the yaw axis.</summary>
-        public const float StickDeadzone = 0.02f;
+        /// <summary>Smallest vertical component the fitted ground normal is divided by. The slope is a
+        /// ratio against it, so a near-vertical face would otherwise demand an unbounded climb.</summary>
+        public const float MinGroundNormalY = 0.3f;
 
-        // hover / attitude
-        /// <summary>
-        /// [ride-height error, closing rate, roll, roll rate, pitch, pitch rate] — the estimator's
-        /// output, read here and never written. Angles are radians and follow
-        /// <see cref="Attitude"/>: positive pitch is nose-down, positive roll lifts the right side.
-        /// </summary>
-        [ReadOnly] public NativeArray<float> HoverState;
-        public floatMxN HoverK;
-        public floatLQRState HoverLqrState;
-        public NativeArray<float> HoverOut;
-        public float Mass, RollInertia, PitchInertia, Gravity;
-        public float QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque;
+        /// <summary>Largest along-track ground gradient the preview will act on, rise over run — about
+        /// 56 degrees. Anything steeper is a wall, not a hill the tank can follow.</summary>
+        public const float MaxSlope = 1.5f;
+
+        // ---- the MPC ----
+        /// <summary>Carries the warm-start plan and working set; the caller must copy it back.</summary>
+        public floatMPCState Mpc;
+        /// <summary>Length <see cref="HoverTankMPCDemo.StateCount"/>, rebuilt here every step.</summary>
+        public NativeArray<float> MpcX0;
+        /// <summary>Length Horizon * StateCount — the per-stage reference, rebuilt here every step.</summary>
+        public NativeArray<float> MpcRef;
+        /// <summary>Length <see cref="HoverTankMPCDemo.InputCount"/> — the applied first input.</summary>
+        public NativeArray<float> MpcU0;
+        /// <summary>Length 4, the soft rows' bound in the order +fwd, -fwd, +lat, -lat.</summary>
+        public NativeArray<float> MpcSoft;
+        public NativeArray<MPCInfo> MpcOut;
+        /// <summary>[0] predicted terrain rise at the horizon end (m), [1] along-track slope (deg),
+        /// [2] tightest soft row, [3] that row's remaining clearance (m).</summary>
+        public NativeArray<float> PreviewOut;
+        public int Horizon;
+
+        public float Mass, RollInertia, PitchInertia, YawInertia, Gravity;
         public float Dt;
 
-        // driver
-        public float DriveInput, DriveForce;
-        /// <summary>Q/E strafe demand in [-1, 1]; positive is to the hull's right.</summary>
-        public float StrafeInput;
-        public float StrafeForce;
-        /// <summary>Mouse X and A/D already summed and clamped to [-1, 1].</summary>
-        public float SteerInput;
-        public float SteerTorque;
+        // ---- the estimate this step, and nothing else ----
+        /// <summary>Estimated [roll, pitch, yaw], rad.</summary>
+        public float3 Rpy;
+        /// <summary>Fitted ground normal in WORLD axes.</summary>
+        public float3 GroundNormal;
+        /// <summary>Estimated world velocity, m/s — only the vertical component is read.</summary>
+        public float3 VelWorld;
+        public float ForwardSpeed, LateralSpeed, YawRate, RollRate, PitchRate;
+        /// <summary>Ride height, the cosine of hull tilt from world up (for the gravity feedforward),
+        /// and the commanded ride height the preview is written against.</summary>
+        public float Clearance, TiltCos, TargetRideHeight;
+        public bool GroundValid;
+
+        // ---- anti-collision ----
+        /// <summary>Ranger readings in <see cref="ProximityRig"/> order: fwd, back, left, right.</summary>
+        [ReadOnly] public NativeArray<float> ProxSensed;
+        /// <summary>Metres held back from whatever a ranger reports.</summary>
+        public float CollisionMargin;
+
+        // ---- driver ----
+        public float DriveInput, StrafeInput, SteerInput;
         public bool BrakeInput;
-        public float BrakeForce, BrakeGain, BrakeYawGain;
-        public float IdleLinearGain, IdleAngularGain;
-        /// <summary>Hull velocity along its own forward axis, m/s.</summary>
-        public float ForwardSpeed;
-        /// <summary>Hull velocity along its own right axis, m/s.</summary>
-        public float LateralSpeed;
-        /// <summary>Hull yaw rate about its own up axis, rad/s.</summary>
-        public float YawRate;
+        public float MaxFwdSpeed, MaxLatSpeed, MaxYawRate;
 
         // thruster allocation
         public NativeArray<float> Controls;
@@ -1184,8 +1372,6 @@ namespace LinearAlgebraDemos
         public GimbalSettings Settings;
         public float4 Health, MountX, MountY, MountZ;
         public float MountArm;
-        /// <summary>cos of the hull's tilt from world up, for the gravity feedforward.</summary>
-        public float TiltCos;
 
         // ground effect
         /// <summary>Each nozzle's exit plane above the ground, metres, in mount order.</summary>
@@ -1209,96 +1395,98 @@ namespace LinearAlgebraDemos
             float4 groundGain = GroundEffect.Factor(NozzleHeights, NozzleRadius);
             for (int i = 0; i < GimbalAllocation.Thrusters; i++) GroundOut[i] = groundGain[i];
 
-            // ---- hover LQR: warm re-solve every step, with the mean augmentation in B ----
-            // WHAT THIS IS, PRECISELY: a deliberate mild detune, NOT identification of a varying plant.
-            // The allocation is handed the true per-nozzle gain and inverts it exactly, so a unit of
-            // commanded vertical acceleration still buys exactly one unit at every height and ground
-            // effect is invisible to the controller. Telling the model otherwise only lowers K, so the
-            // real closed loop -- which runs against the true unity map, not against this B -- gets
-            // slightly SOFTER near the ground rather than tighter. That is the intent: hold station
-            // less aggressively where the cushion is already helping.
-            //
-            // Scheduling would be real identification if the allocation were given only an ESTIMATE of
-            // the gain; the plant would then genuinely vary with height and the estimate's error would
-            // be a disturbance worth rejecting.
-            //
-            // Free either way: the model is rebuilt and warm re-solved every step regardless, and the
-            // warm floatLQRState re-converges from the previous step's S rather than solving cold.
-            BuildHoverModel(Dt, 0.25f * math.csum(groundGain),
-                QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque,
-                Allocator.Temp, out var A, out var B, out var Q, out var R);
+            // ---- x0: four states are ZERO by construction ----
+            // sFwd/sLat/sVert/yaw are displacements FROM NOW, and the frame is re-anchored every solve.
+            // That is what lets a range measured now be written straight against a predicted state.
+            int n = HoverTankMPCDemo.StateCount;
+            for (int i = 0; i < n; i++) MpcX0[i] = 0f;
+            MpcX0[HoverTankMPCDemo.VFwd] = ForwardSpeed;
+            MpcX0[HoverTankMPCDemo.VLat] = LateralSpeed;
+            MpcX0[HoverTankMPCDemo.VVert] = VelWorld.y;
+            MpcX0[HoverTankMPCDemo.Roll] = Rpy.x;
+            MpcX0[HoverTankMPCDemo.RollRate] = RollRate;
+            MpcX0[HoverTankMPCDemo.Pitch] = Rpy.y;
+            MpcX0[HoverTankMPCDemo.PitchRate] = PitchRate;
+            MpcX0[HoverTankMPCDemo.YawRate] = YawRate;
 
-            RiccatiInfo info = LQR.lqr(in A, in B, in Q, in R, ref HoverK, ref HoverLqrState);
-            HoverOut[0] = info.iterations;
-            HoverOut[1] = info ? 1f : 0f;
-            HoverOut[2] = (float)info.residual;
-            HoverOut[3] = info.rankDeficient ? 1f : 0f;
-            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose();
+            // ---- terrain preview: the anticipation an LQR structurally cannot have ----
+            // Ride height at stage k is clearance + sVert_k - rise_k; setting that equal to the target
+            // gives sVert_k = rise_k - e. So the CURRENT ride-height error enters as a reference offset
+            // rather than as a state, and rising ground ahead is a moving reference rather than a
+            // disturbance -- which matters, because MPC.solve has no disturbance term to put it in.
+            //
+            // The horizontal displacement the rise is read at comes from the CURRENT speed, a
+            // constant-velocity extrapolation: the tank's own acceleration over the horizon is what the
+            // solve is deciding, so using the reference speed here would assume its answer.
+            float3x3 basis = Attitude.Matrix(Rpy);
+            float3 fwdWorld = basis.c2, rightWorld = basis.c0;
 
-            // u = -K x  ->  [vertical accel command, roll angular accel command, pitch angular accel command]
-            float uVertAccel = 0f, uRollAccel = 0f, uPitchAccel = 0f;
-            for (int j = 0; j < 6; j++)
+            float slopeF = 0f, slopeR = 0f;
+            if (GroundValid)
             {
-                uVertAccel -= HoverK[0, j] * HoverState[j];
-                uRollAccel -= HoverK[1, j] * HoverState[j];
-                uPitchAccel -= HoverK[2, j] * HoverState[j];
+                // Floor the normal's vertical component away from zero before dividing, then clamp the
+                // slope itself: a near-vertical face in the fan must not demand an unbounded climb.
+                float ny = GroundNormal.y;
+                ny = ny >= 0f ? math.max(ny, MinGroundNormalY) : math.min(ny, -MinGroundNormalY);
+                slopeF = math.clamp(-math.dot(GroundNormal, fwdWorld) / ny, -MaxSlope, MaxSlope);
+                slopeR = math.clamp(-math.dot(GroundNormal, rightWorld) / ny, -MaxSlope, MaxSlope);
             }
 
-            // ---- driver demand ----
-            // Everything here is a WRENCH DEMAND handed to the allocation, never a force written onto
-            // the rigid body: braking and damping are solved for like every other axis, so the servos
-            // visibly swing to produce them.
-            //
-            // The brake and the idle damping COMPOSE AS A LADDER rather than summing. SPACE is the
-            // strong explicit brake and subsumes idle damping entirely; otherwise idle damping fades
-            // out in proportion to how hard the axis is being commanded. Two damping terms live at
-            // once would feel mushy and would make the brake read weaker than it is.
-            //
-            // The three BODY-RATE axes the driver owns — along-track, lateral and yaw — are damped.
-            // Pitch and roll are already regulated by the hover loop, and a second controller on those
-            // axes would fight it.
-            float driveIn = math.clamp(DriveInput, -1f, 1f);
-            float strafeIn = math.clamp(StrafeInput, -1f, 1f);
-            float steer = math.clamp(SteerInput, -1f, 1f);
+            float rideError = Clearance - TargetRideHeight;
+            float climbRate = slopeF * ForwardSpeed + slopeR * LateralSpeed;
 
-            float drive, strafeDemand, yawDemand;
-            if (BrakeInput)
+            // Hands off is a zero velocity reference, and SPACE is the same thing on every axis at
+            // once. The old brake / idle-damping ladder is gone: it existed because nothing regulated
+            // these axes, and a second damping term would now fight the MPC for them.
+            float vFwdRef = BrakeInput ? 0f : math.clamp(DriveInput, -1f, 1f) * MaxFwdSpeed;
+            float vLatRef = BrakeInput ? 0f : math.clamp(StrafeInput, -1f, 1f) * MaxLatSpeed;
+            float yawRateRef = BrakeInput ? 0f : math.clamp(SteerInput, -1f, 1f) * MaxYawRate;
+
+            for (int k = 0; k < Horizon; k++)
             {
-                // Both gains ease off as the rate drops, so the brake settles instead of chattering at
-                // rest. BrakeForce stays under the drive authority and the yaw brake is capped at the
-                // stick's own authority, so braking can never out-demand ordinary driving and starve
-                // attitude control.
-                drive = -math.clamp(BrakeGain * ForwardSpeed, -BrakeForce, BrakeForce);
-                strafeDemand = -math.clamp(BrakeGain * LateralSpeed, -BrakeForce, BrakeForce);
-                yawDemand = -math.clamp(BrakeYawGain * YawRate, -SteerTorque, SteerTorque);
+                int b = k * n;
+                for (int i = 0; i < n; i++) MpcRef[b + i] = 0f;
+                MpcRef[b + HoverTankMPCDemo.VFwd] = vFwdRef;
+                MpcRef[b + HoverTankMPCDemo.VLat] = vLatRef;
+                MpcRef[b + HoverTankMPCDemo.YawRate] = yawRateRef;
+                MpcRef[b + HoverTankMPCDemo.SVert] = climbRate * ((k + 1) * Dt) - rideError;
+                MpcRef[b + HoverTankMPCDemo.VVert] = climbRate;
             }
-            else
-            {
-                // Idle damping is a D term on the demand, deliberately gentle: this is a hover vehicle
-                // and the glide is the point, so it settles over a second or two rather than stopping dead.
-                float linearDamp = -math.clamp(IdleLinearGain * ForwardSpeed, -DriveForce, DriveForce);
-                float lateralDamp = -math.clamp(IdleLinearGain * LateralSpeed, -StrafeForce, StrafeForce);
-                float yawDamp = -math.clamp(IdleAngularGain * YawRate, -SteerTorque, SteerTorque);
 
-                drive = driveIn * DriveForce + (1f - math.abs(driveIn)) * linearDamp;
-                strafeDemand = strafeIn * StrafeForce + (1f - math.abs(strafeIn)) * lateralDamp;
+            // ---- anti-collision: the wall moves, the horizon does not get rebuilt ----
+            // Shared across stages on purpose: the range is measured NOW and the state is displacement
+            // from NOW, so one bound is the correct statement at every stage. A ranger that found
+            // nothing reports its full range, which simply never binds.
+            MpcSoft[0] = math.max(0f, ProxSensed[0] - CollisionMargin);   // +sFwd vs the forward ranger
+            MpcSoft[1] = math.max(0f, ProxSensed[1] - CollisionMargin);   // -sFwd vs the rear ranger
+            MpcSoft[2] = math.max(0f, ProxSensed[3] - CollisionMargin);   // +sLat is to the RIGHT: ranger 3
+            MpcSoft[3] = math.max(0f, ProxSensed[2] - CollisionMargin);   // -sLat is to the LEFT: ranger 2
+            var softBound = new floatN(MpcSoft);
+            MPC.setSoftBound(ref Mpc, in softBound);
 
-                yawDemand = math.abs(steer) > StickDeadzone
-                    ? steer * SteerTorque + (1f - math.abs(steer)) * yawDamp
-                    : yawDamp;
-            }
+            var x0 = new floatN(MpcX0);
+            var reference = new floatN(MpcRef);
+            var u0 = new floatN(MpcU0);
+            MpcOut[0] = MPC.solve(ref Mpc, in x0, in reference, ref u0);
+
+            PreviewOut[0] = climbRate * (Horizon * Dt);
+            PreviewOut[1] = math.degrees(math.atan(slopeF));
+            int tightest = 0;
+            for (int i = 1; i < 4; i++) if (MpcSoft[i] < MpcSoft[tightest]) tightest = i;
+            PreviewOut[2] = tightest;
+            PreviewOut[3] = MpcSoft[tightest];
 
             // ---- demanded hull-frame wrench ----
             // The gravity feedforward is divided by the hull's tilt cosine because thrust is bolted to
             // the hull and gravity is not; floored so a near-vertical hull cannot demand unbounded lift.
             var desired = new GimbalWrench
             {
-                Lateral = strafeDemand,
-                Lift = Mass * (Gravity / math.max(TiltCos, 0.35f) + uVertAccel),
-                Drive = drive,
-                Pitch = PitchInertia * uPitchAccel,
-                Yaw = yawDemand,
-                Roll = RollInertia * uRollAccel,
+                Lateral = Mass * MpcU0[HoverTankMPCDemo.ALat],
+                Lift = Mass * (Gravity / math.max(TiltCos, 0.35f) + MpcU0[HoverTankMPCDemo.AVert]),
+                Drive = Mass * MpcU0[HoverTankMPCDemo.AFwd],
+                Pitch = PitchInertia * MpcU0[HoverTankMPCDemo.AlphaPitch],
+                Yaw = YawInertia * MpcU0[HoverTankMPCDemo.AlphaYaw],
+                Roll = RollInertia * MpcU0[HoverTankMPCDemo.AlphaRoll],
             };
 
             // ---- allocation: 12 controls onto the 6 wrench components ----
@@ -1314,41 +1502,5 @@ namespace LinearAlgebraDemos
             WrenchOut[9] = got.Pitch; WrenchOut[10] = got.Yaw; WrenchOut[11] = got.Roll;
         }
 
-        /// <summary>
-        /// Discrete (Euler, zero-order-hold over <paramref name="dt"/>) hover/attitude model: three
-        /// decoupled double integrators — height/vertical-velocity, roll/roll-rate, pitch/pitch-rate —
-        /// driven directly by ACCELERATION inputs [vertical accel, roll angular accel, pitch angular
-        /// accel]: B = dt on each rate row, no mass/inertia scaling (chosen so B's entries stay near
-        /// O(dt) instead of O(dt/mass) — the latter leaves the DARE badly scaled for a heavy hull).
-        /// Gravity feedforward and the accel -> force/torque conversion (via mass/rollInertia/
-        /// pitchInertia) are the caller's job, not this model's. Allocates A/B/Q/R fresh with
-        /// <paramref name="allocator"/> (caller disposes).
-        ///
-        /// <paramref name="liftGain"/> scales the VERTICAL input column alone; 1 is the nominal model.
-        /// The two angular columns are untouched — an augmentation asymmetry across the four nozzles is
-        /// a torque the allocation resolves, not a change in the hull's angular control effectiveness.
-        /// Whether a value other than 1 identifies a real change in control effectiveness, or only
-        /// detunes the gain, depends on whether the caller's actuator path already compensates for it.
-        /// </summary>
-        public static void BuildHoverModel(float dt, float liftGain,
-            float qHeight, float qHeightRate, float qTilt, float qTiltRate, float rThrust, float rTorque,
-            Allocator allocator, out floatMxN A, out floatMxN B, out floatMxN Q, out floatMxN R)
-        {
-            A = new floatMxN(6, 6, allocator);
-            B = new floatMxN(6, 3, allocator);
-            Q = new floatMxN(6, 6, allocator);
-            R = new floatMxN(3, 3, allocator);
-
-            for (int i = 0; i < 6; i++) A[i, i] = 1f;
-            A[0, 1] = dt; A[2, 3] = dt; A[4, 5] = dt;
-
-            B[1, 0] = dt * liftGain; B[3, 1] = dt; B[5, 2] = dt;
-
-            Q[0, 0] = qHeight; Q[1, 1] = qHeightRate;
-            Q[2, 2] = qTilt; Q[3, 3] = qTiltRate;
-            Q[4, 4] = qTilt; Q[5, 5] = qTiltRate;
-
-            R[0, 0] = rThrust; R[1, 1] = rTorque; R[2, 2] = rTorque;
-        }
     }
 }

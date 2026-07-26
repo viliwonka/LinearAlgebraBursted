@@ -11,8 +11,8 @@ namespace LinearAlgebraDemos.Tests
     /// <summary>
     /// Headless smoke tests for <see cref="HoverTankMPCDemo"/>. What is assertable without a scene:
     /// the shape contract of <see cref="TerrainField"/>, the <see cref="GroundEffect"/> curve and its
-    /// clamp, the stability of the hover model <see cref="HoverTankMPCStepJob.BuildHoverModel"/>
-    /// builds, the demo's own step job run against a synthetic hover state, and the 6x12
+    /// clamp, the stability of the model <see cref="HoverTankMPCDemo.BuildMpcModel"/>
+    /// builds, the demo's own step job run against a synthetic estimate, and the 6x12
     /// <see cref="GimbalAllocation"/> driven on its own. Nothing here touches Physics, Rigidbody or
     /// raycasts.
     ///
@@ -57,19 +57,37 @@ namespace LinearAlgebraDemos.Tests
                 $"wall does not stand proud of its own flanks (prominence = {wallProminence} m)");
         }
 
+        /// <summary>
+        /// The MPC's own model must be stabilizable and its terminal Riccati solve well posed —
+        /// <c>floatMPCState</c>'s constructor throws otherwise, so this is what stands between a weight
+        /// change and a demo that cannot start. The infinite-horizon closed loop is the right oracle
+        /// because that same DARE IS the horizon's terminal cost.
+        ///
+        /// qPos is deliberately small but NONZERO. At exactly zero the three integrator modes (forward,
+        /// lateral, heading) are undetectable from Q and the DARE is ill-posed.
+        ///
+        /// The two families are asserted SEPARATELY and on purpose. The REGULATED modes — ride height,
+        /// roll, pitch — carry the large weights and have to settle briskly, so they keep the tight
+        /// decay bound. The INTEGRATOR modes are deliberately soft: at qPos = 0.05 forward displacement
+        /// and heading recover with a time constant of several seconds, which is the intent (a driver
+        /// commands rates, and a stiff position hold would fight them). Requiring them to settle at the
+        /// regulated modes' pace would encode a tuning preference the design explicitly rejects, so what
+        /// is asserted for them is STABILITY itself — an asymptotic per-step contraction below 1, which
+        /// is what "the closed loop is stable" actually means and what the DARE is claiming.
+        /// </summary>
         [Test]
-        public void HoverModel_Stabilizes_From_Perturbed_State()
+        public void MpcModel_Stabilizes_From_Perturbed_State()
         {
-            const int n = 6, m = 3;
+            const int n = HoverTankMPCDemo.StateCount, m = HoverTankMPCDemo.InputCount;
 
-            HoverTankMPCStepJob.BuildHoverModel(
-                1f / 60f, 1f,
-                40f, 6f, 90f, 8f, 0.02f, 0.4f,
+            HoverTankMPCDemo.BuildMpcModel(
+                1f / 60f,
+                0.05f, 12f, 120f, 14f, 90f, 8f, 10f, 0.02f, 0.4f,
                 Allocator.TempJob, out var A, out var B, out var Q, out var R);
 
             var K = new floatMxN(m, n, Allocator.TempJob);
             RiccatiInfo info = LQR.lqr(in A, in B, in Q, in R, ref K);
-            Assert.IsTrue(info, $"hover LQR did not converge: {info.status}");
+            Assert.IsTrue(info, $"the MPC model's terminal DARE did not converge: {info.status}");
 
             var BK = new floatMxN(n, n, Allocator.TempJob);
             Blas.dot(in B, in K, ref BK);
@@ -78,31 +96,65 @@ namespace LinearAlgebraDemos.Tests
                 for (int j = 0; j < n; j++)
                     Acl[i, j] = A[i, j] - BK[i, j];
 
+            // ---- the regulated modes settle briskly ----
             var x = new NativeArray<float>(n, Allocator.TempJob);
             var xNext = new NativeArray<float>(n, Allocator.TempJob);
-            x[0] = 0.8f; x[2] = 0.3f; x[4] = -0.25f;   // perturbed height / roll / pitch
+            x[HoverTankMPCDemo.SVert] = 0.8f;
+            x[HoverTankMPCDemo.Roll] = 0.3f;
+            x[HoverTankMPCDemo.Pitch] = -0.25f;
 
             float norm = StateNorm(x, n);
             int steps = 0;
             const int maxSteps = 2000;
             while (norm >= 1e-3f && steps < maxSteps)
             {
-                for (int i = 0; i < n; i++)
-                {
-                    float s = 0f;
-                    for (int j = 0; j < n; j++) s += Acl[i, j] * x[j];
-                    xNext[i] = s;
-                }
-                for (int i = 0; i < n; i++) x[i] = xNext[i];
+                Step(in Acl, x, xNext, n);
                 norm = StateNorm(x, n);
                 steps++;
             }
+            Assert.IsTrue(norm < 1e-3f,
+                $"ride height / roll / pitch did not decay below 1e-3 within {maxSteps} steps (||x|| = {norm})");
 
-            Assert.IsTrue(norm < 1e-3f, $"hover closed loop did not decay below 1e-3 within {maxSteps} steps (||x|| = {norm})");
+            // ---- the integrator modes are stable, however softly ----
+            for (int i = 0; i < n; i++) x[i] = 0f;
+            x[HoverTankMPCDemo.VFwd] = 2f;
+            x[HoverTankMPCDemo.SLat] = 1f;
+            x[HoverTankMPCDemo.Yaw] = 0.4f;
+
+            // Iterating Acl IS power iteration, so the norm ratio converges to the spectral radius.
+            // Burn in first, then measure: the early ratios are still a mix of the fast modes.
+            for (int s = 0; s < 400; s++) Step(in Acl, x, xNext, n);
+            float start = StateNorm(x, n);
+            const int measure = 600;
+            for (int s = 0; s < measure; s++) Step(in Acl, x, xNext, n);
+            float end = StateNorm(x, n);
+
+            // Non-vacuity: the ratio has to be measured on real signal, not on the noise floor a
+            // fully-converged run would leave behind.
+            Assert.IsTrue(start > 1e-3f,
+                $"nothing left to measure the contraction on after the burn-in (||x|| = {start})");
+
+            // 0.9995 per step at 60 Hz is a time constant of ~33 s — the point past which "gentle
+            // station keeping" stops being station keeping at all. It is a design floor, not a fit.
+            float ratio = math.pow(end / start, 1f / measure);
+            Assert.IsTrue(ratio < 0.9995f,
+                $"the integrator modes are not contracting usefully: per-step ratio {ratio} ({start} -> {end} over {measure} steps)");
 
             A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose();
             K.Dispose(); BK.Dispose(); Acl.Dispose();
             x.Dispose(); xNext.Dispose();
+        }
+
+        /// <summary>One closed-loop step, x &lt;- Acl x, through <paramref name="scratch"/>.</summary>
+        static void Step(in floatMxN Acl, NativeArray<float> x, NativeArray<float> scratch, int n)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                float s = 0f;
+                for (int j = 0; j < n; j++) s += Acl[i, j] * x[j];
+                scratch[i] = s;
+            }
+            for (int i = 0; i < n; i++) x[i] = scratch[i];
         }
 
         /// <summary>
@@ -124,16 +176,24 @@ namespace LinearAlgebraDemos.Tests
 
             GimbalSettings settings = GimbalSettings.Default;
 
-            var hoverState = new NativeArray<float>(6, Allocator.TempJob);
-            // On height, at rest, rolled -0.2 rad: right side down.
-            hoverState[2] = -0.2f;
-            var hoverOut = new NativeArray<float>(4, Allocator.TempJob);
+            const int horizon = 15;
+            const int n = HoverTankMPCDemo.StateCount, mIn = HoverTankMPCDemo.InputCount;
+
             var controls = new NativeArray<float>(GimbalAllocation.ControlCount, Allocator.TempJob);
             var allocOut = new NativeArray<QPInfo>(1, Allocator.TempJob);
             var wrenchOut = new NativeArray<float>(2 * GimbalAllocation.WrenchRows, Allocator.TempJob);
             var groundOut = new NativeArray<float>(GimbalAllocation.Thrusters, Allocator.TempJob);
-            var hoverK = new floatMxN(3, 6, Allocator.TempJob);
-            var hoverLqr = new floatLQRState(6, Allocator.TempJob);
+
+            var mpc = BuildTestMpc(dt, horizon, out float aVertLo, out float aVertHi);
+            var mpcX0 = new NativeArray<float>(n, Allocator.TempJob);
+            var mpcRef = new NativeArray<float>(horizon * n, Allocator.TempJob);
+            var mpcU0 = new NativeArray<float>(mIn, Allocator.TempJob);
+            var mpcSoft = new NativeArray<float>(HoverTankMPCDemo.SoftRows, Allocator.TempJob);
+            var mpcOut = new NativeArray<MPCInfo>(1, Allocator.TempJob);
+            var previewOut = new NativeArray<float>(4, Allocator.TempJob);
+            // Every ranger sees nothing, so no soft row binds and this stays a test of the allocation.
+            var proxSensed = new NativeArray<float>(ProximityRig.Rays, Allocator.TempJob);
+            for (int i = 0; i < ProximityRig.Rays; i++) proxSensed[i] = 8f;
 
             float trim = math.clamp(mass * gravity / (4f * settings.maxThrust),
                                     settings.minThrust / settings.maxThrust, 1f);
@@ -146,12 +206,24 @@ namespace LinearAlgebraDemos.Tests
 
             var job = new HoverTankMPCStepJob
             {
-                HoverState = hoverState,
-                HoverK = hoverK, HoverLqrState = hoverLqr, HoverOut = hoverOut,
-                Mass = mass, RollInertia = rollInertia, PitchInertia = pitchInertia, Gravity = gravity,
-                QHeight = 40f, QHeightRate = 6f, QTilt = 90f, QTiltRate = 8f,
-                RThrust = 0.02f, RTorque = 0.4f,
+                Mpc = mpc,
+                MpcX0 = mpcX0, MpcRef = mpcRef, MpcU0 = mpcU0, MpcSoft = mpcSoft,
+                MpcOut = mpcOut, PreviewOut = previewOut, Horizon = horizon,
+                Mass = mass, RollInertia = rollInertia, PitchInertia = pitchInertia,
+                YawInertia = 6500f, Gravity = gravity,
                 Dt = dt,
+
+                // At rest, on height, rolled -0.2 rad: right side down.
+                Rpy = new float3(-0.2f, 0f, 0f),
+                GroundNormal = new float3(0f, 1f, 0f),
+                VelWorld = float3.zero,
+                ForwardSpeed = 0f, LateralSpeed = 0f, YawRate = 0f, RollRate = 0f, PitchRate = 0f,
+                Clearance = 2f, TiltCos = 1f, TargetRideHeight = 2f,
+                // Level ground: the preview contributes nothing, so the wrench is constant and the
+                // allocation has something definite to converge to.
+                GroundValid = true,
+
+                ProxSensed = proxSensed, CollisionMargin = 1.5f,
 
                 Controls = controls, AllocOut = allocOut, WrenchOut = wrenchOut,
                 Settings = settings, Health = new float4(1f),
@@ -160,12 +232,8 @@ namespace LinearAlgebraDemos.Tests
                 MountY = float4.zero,
                 MountZ = new float4(halfLength, halfLength, -halfLength, -halfLength),
                 MountArm = math.max(halfWidth, halfLength),
-                DriveInput = 0f, DriveForce = 9000f,
-                StrafeInput = 0f, StrafeForce = 7000f,
-                SteerInput = 0f, SteerTorque = 9000f,
-                BrakeInput = false, BrakeForce = 8000f, BrakeGain = 3000f, BrakeYawGain = 12000f,
-                IdleLinearGain = 1500f, IdleAngularGain = 6500f,
-                ForwardSpeed = 0f, LateralSpeed = 0f, YawRate = 0f, TiltCos = 1f,
+                DriveInput = 0f, StrafeInput = 0f, SteerInput = 0f, BrakeInput = false,
+                MaxFwdSpeed = 14f, MaxLatSpeed = 9f, MaxYawRate = 1.4f,
                 // Radius 0 turns ground effect off, so this stays a test of the nominal rig.
                 NozzleHeights = new float4(2f), NozzleRadius = 0f, GroundOut = groundOut,
             };
@@ -175,13 +243,17 @@ namespace LinearAlgebraDemos.Tests
             {
                 for (int j = 0; j < GimbalAllocation.ControlCount; j++) before[j] = controls[j];
 
-                // RunByRef mutates the job in place, so the warm floatLQRState carries across steps
+                // RunByRef mutates the job in place, so the warm floatMPCState carries across steps
                 // without a copy-back.
                 IJobExtensions.RunByRef(ref job);
 
-                Assert.IsTrue(hoverOut[1] == 1f, $"step {s}: hover LQR did not converge");
+                Assert.IsTrue(mpcOut[0].status != MPCStatus.Fallback,
+                    $"step {s}: MPC fell back to the previous plan");
                 Assert.IsTrue(allocOut[0].status == QPStatus.Optimal,
                     $"step {s}: allocation QP returned {allocOut[0].status}");
+                Assert.IsTrue(mpcU0[HoverTankMPCDemo.AVert] >= aVertLo - 1e-4f
+                              && mpcU0[HoverTankMPCDemo.AVert] <= aVertHi + 1e-4f,
+                    $"step {s}: vertical command {mpcU0[HoverTankMPCDemo.AVert]} left its input box [{aVertLo}, {aVertHi}]");
 
                 // 8 gimbal angles (4 pitch then 4 yaw), then 4 throttles.
                 for (int i = 0; i < 2 * GimbalAllocation.Thrusters; i++)
@@ -207,8 +279,11 @@ namespace LinearAlgebraDemos.Tests
             float demandedLift = wrenchOut[1], demandedRoll = wrenchOut[5];
             float achievedLift = wrenchOut[7], achievedRoll = wrenchOut[11];
 
-            Assert.IsTrue(math.abs(hoverState[0]) < 1e-5f,
-                $"the step job must not write the hover state it was handed, got {hoverState[0]}");
+            // The displacement states are re-anchored every solve; if any of them carried over, the
+            // anti-collision rows would be measuring from a stale origin.
+            Assert.IsTrue(mpcX0[HoverTankMPCDemo.SFwd] == 0f && mpcX0[HoverTankMPCDemo.SLat] == 0f
+                          && mpcX0[HoverTankMPCDemo.SVert] == 0f && mpcX0[HoverTankMPCDemo.Yaw] == 0f,
+                "the displacement states must be zero in every x0 — the frame is re-anchored each step");
             Assert.IsTrue(demandedRoll > 0f,
                 $"a right-side-down hull should be commanded to roll right side up, got {demandedRoll} Nm");
 
@@ -217,9 +292,43 @@ namespace LinearAlgebraDemos.Tests
             Assert.IsTrue(achievedRoll > 0.75f * demandedRoll && achievedRoll < 1.25f * demandedRoll,
                 $"roll torque {achievedRoll} Nm does not track the demanded {demandedRoll} Nm");
 
-            hoverState.Dispose(); hoverOut.Dispose();
             controls.Dispose(); allocOut.Dispose(); wrenchOut.Dispose(); groundOut.Dispose();
-            hoverK.Dispose(); job.HoverLqrState.Dispose();
+            mpcX0.Dispose(); mpcRef.Dispose(); mpcU0.Dispose(); mpcSoft.Dispose();
+            mpcOut.Dispose(); previewOut.Dispose(); proxSensed.Dispose();
+            job.Mpc.Dispose();
+        }
+
+        /// <summary>
+        /// The demo's own MPC, at the demo's own default weights, with input bounds wide enough that
+        /// this fixture tests the allocation rather than the box. <paramref name="aVertLo"/> and
+        /// <paramref name="aVertHi"/> come back so a caller can assert the box was respected.
+        /// </summary>
+        static floatMPCState BuildTestMpc(float dt, int horizon, out float aVertLo, out float aVertHi)
+        {
+            HoverTankMPCDemo.BuildMpcModel(dt, 0.05f, 12f, 120f, 14f, 90f, 8f, 10f, 0.02f, 0.4f,
+                                           Allocator.TempJob, out var A, out var B, out var Q, out var R);
+
+            aVertLo = -9.81f; aVertHi = 12f;
+            var uLo = new floatN(HoverTankMPCDemo.InputCount, Allocator.TempJob, true);
+            var uHi = new floatN(HoverTankMPCDemo.InputCount, Allocator.TempJob, true);
+            for (int i = 0; i < HoverTankMPCDemo.InputCount; i++) { uLo[i] = -12f; uHi[i] = 12f; }
+            uLo[HoverTankMPCDemo.AVert] = aVertLo; uHi[HoverTankMPCDemo.AVert] = aVertHi;
+
+            var C = new floatMxN(HoverTankMPCDemo.SoftRows, HoverTankMPCDemo.StateCount, Allocator.TempJob);
+            C[0, HoverTankMPCDemo.SFwd] = 1f; C[1, HoverTankMPCDemo.SFwd] = -1f;
+            C[2, HoverTankMPCDemo.SLat] = 1f; C[3, HoverTankMPCDemo.SLat] = -1f;
+            var d = new floatN(HoverTankMPCDemo.SoftRows, Allocator.TempJob, true);
+            for (int i = 0; i < HoverTankMPCDemo.SoftRows; i++) d[i] = 8f;
+
+            // Explicit penalty, matching the demo: the library default assumes cost matrices at O(1)
+            // and these run to O(100).
+            var mpc = new floatMPCState(HoverTankMPCDemo.StateCount, HoverTankMPCDemo.InputCount, horizon,
+                                        Allocator.TempJob, in A, in B, in Q, in R, in uLo, in uHi,
+                                        in C, in d, 1e5f, 1f);
+
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose();
+            uLo.Dispose(); uHi.Dispose(); C.Dispose(); d.Dispose();
+            return mpc;
         }
 
         /// <summary>
