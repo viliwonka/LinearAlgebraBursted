@@ -6,12 +6,19 @@ using UnityEngine;
 namespace LinearAlgebraDemos
 {
     /// <summary>
-    /// Body wrench in hull-local axes (x right, y up, z forward). Five components, not six: every
-    /// gimballed thruster's force stays in a forward-up plane, so the rig has no lateral force
-    /// authority at all and there is nothing to allocate along hull x.
+    /// Body wrench in hull-local axes (x right, y up, z forward). Six components: the three FORCE
+    /// rows first, then the three TORQUE rows, each triple ordered x, y, z. That is also the row
+    /// order of <see cref="GimbalAllocation.ScaledJacobian"/> and of the residual
+    /// <see cref="GimbalAllocation.Solve"/> builds, so the three must be edited together.
+    ///
+    /// Torques are r x F about the center of mass. Force rows enter the QP divided by
+    /// <see cref="GimbalRig.ForceScale"/>, torque rows by <see cref="GimbalRig.TorqueScale"/>.
     /// </summary>
     public struct GimbalWrench
     {
+        /// <summary>Force along hull +x, newtons. Positive pushes the hull right — the strafe axis.</summary>
+        public float Lateral;
+
         /// <summary>Force along hull +y, newtons.</summary>
         public float Lift;
 
@@ -33,6 +40,8 @@ namespace LinearAlgebraDemos
     /// the rig. The four limit families (angle range, angle rate, thrust range, thrust rate) are the
     /// constraints the allocation QP is solved under; tightening either RATE is what makes the tank
     /// sluggish, since a rate is a bound on this step's change, not on the value.
+    ///
+    /// One angle range and one angle rate cover BOTH gimbal axes of every nozzle.
     /// </summary>
     [System.Serializable]
     public struct GimbalSettings
@@ -40,16 +49,16 @@ namespace LinearAlgebraDemos
         [Tooltip("Thrust of one thruster at full throttle, newtons.")]
         [Range(2000f, 40000f)] public float maxThrust;
 
-        [Tooltip("Idle thrust, newtons. A thruster never shuts off, so its servo angle always matters.")]
+        [Tooltip("Idle thrust, newtons. A thruster never shuts off, so its gimbal angles always matter.")]
         [Range(0f, 4000f)] public float minThrust;
 
-        [Tooltip("Most backward-tilted servo angle, degrees. 0 is straight up.")]
-        [Range(-85f, 0f)] public float servoMinDeg;
+        [Tooltip("Most negative gimbal angle on either axis, degrees. 0 is straight up.")]
+        [Range(-GimbalAllocation.MaxGimbalDeg, 0f)] public float servoMinDeg;
 
-        [Tooltip("Most forward-tilted servo angle, degrees. 0 is straight up.")]
-        [Range(0f, 85f)] public float servoMaxDeg;
+        [Tooltip("Most positive gimbal angle on either axis, degrees. 0 is straight up.")]
+        [Range(0f, GimbalAllocation.MaxGimbalDeg)] public float servoMaxDeg;
 
-        [Tooltip("Servo motor speed, degrees per second. Bounds this step's angle change.")]
+        [Tooltip("Servo motor speed, degrees per second. Bounds this step's angle change on either axis.")]
         [Range(15f, 720f)] public float servoRateDeg;
 
         [Tooltip("Power slew rate, newtons per second. Bounds this step's thrust change.")]
@@ -78,9 +87,9 @@ namespace LinearAlgebraDemos
     /// One step's view of the four-thruster rig. Component i of every float4 belongs to thruster i.
     ///
     /// Thruster i sits at hull-local (MountX, MountY, MountZ)[i], measured from the CENTER OF MASS,
-    /// and produces force Health[i] · throttle[i] · MaxThrust · (0, cos θ, sin θ): the servo turns the
-    /// nozzle about the hull's right axis, sweeping the exhaust forward → down → backward while the
-    /// force sweeps backward → up → forward. θ = 0 is straight up.
+    /// and produces force Health[i] · throttle[i] · MaxThrust ·
+    /// <see cref="GimbalAllocation.ForceDirection"/>(pitch[i], yaw[i]). Both angles are zero when the
+    /// nozzle points straight down and the thrust straight up.
     ///
     /// Throttle is a fraction of <see cref="MaxThrust"/>, so both control families are O(1) and the
     /// allocation Hessian is not split across a newtons-versus-radians scale gap.
@@ -97,14 +106,17 @@ namespace LinearAlgebraDemos
         /// <summary>Per-thruster effectiveness in [0, 1]. 0 is a dead thruster.</summary>
         public float4 Health;
 
-        /// <summary>Absolute servo travel, radians.</summary>
+        /// <summary>Absolute gimbal travel, radians. Shared by both axes of every nozzle.</summary>
         public float4 AngleLo, AngleHi;
 
         /// <summary>Absolute throttle range. A dead thruster is pinned to idle (Lo == Hi).</summary>
         public float4 ThrottleLo, ThrottleHi;
 
-        /// <summary>This step's servo angle change bounds, radians.</summary>
-        public float4 DAngleLo, DAngleHi;
+        /// <summary>This step's pitch-axis angle change bounds, radians.</summary>
+        public float4 DPitchLo, DPitchHi;
+
+        /// <summary>This step's yaw-axis angle change bounds, radians.</summary>
+        public float4 DYawLo, DYawHi;
 
         /// <summary>This step's throttle change bounds.</summary>
         public float4 DThrottleLo, DThrottleHi;
@@ -123,46 +135,78 @@ namespace LinearAlgebraDemos
     }
 
     /// <summary>
-    /// Control allocation for four gimballed thrusters: choose 4 servo angles and 4 throttles whose
-    /// combined wrench matches a demanded <see cref="GimbalWrench"/>, under the rig's angle range,
-    /// angle rate, thrust range and thrust rate limits.
+    /// Control allocation for four TWO-AXIS gimballed thrusters: choose 4 pitch angles, 4 yaw angles
+    /// and 4 throttles whose combined wrench matches a demanded <see cref="GimbalWrench"/>, under the
+    /// rig's angle range, angle rate, thrust range and thrust rate limits.
     ///
-    /// Thrust turns with the servo as (cos θ, sin θ), so controls map to wrench NONLINEARLY and no
-    /// fixed mixer matrix exists. Posed SQP-style instead: linearize the wrench about the CURRENT
-    /// servo angles and throttles each step and solve for the change, which turns all four limit
-    /// families into plain BOX constraints on the decision variables — the rate limits directly, the
-    /// absolute ranges as the same box intersected with the distance left to each range. That is a
-    /// convex box-constrained QP, solved by <c>QP.solve</c>.
+    /// Each nozzle steers over a spherical cap rather than an arc, so lateral force is reachable and
+    /// all six wrench components can be commanded independently.
+    ///
+    /// Thrust turns with the servos as sin/cos, so controls map to wrench NONLINEARLY and no fixed
+    /// mixer matrix exists. Posed SQP-style instead: linearize the wrench about the CURRENT angles
+    /// and throttles each step and solve for the change, which turns all four limit families into
+    /// plain BOX constraints on the decision variables — the rate limits directly, the absolute
+    /// ranges as the same box intersected with the distance left to each range. That is a convex
+    /// box-constrained QP, solved by <c>QP.solve</c>.
     ///
     /// The servo rate limit is what makes the linearization honest: one step's angle change is at
     /// most rate·dt (a few degrees), well inside the range where cos/sin are linear.
     ///
-    /// Controls are laid out as [θ0..θ3 radians, throttle0..throttle3 fractions]; the QP solves for
-    /// the same layout of deltas. 8 controls against 5 reachable wrench components leave a
-    /// 3-dimensional null space, which the servo and trim weights resolve.
+    /// Controls are laid out as [pitch0..pitch3 radians, yaw0..yaw3 radians, throttle0..throttle3
+    /// fractions]; the QP solves for the same layout of deltas. 12 controls against 6 wrench
+    /// components leave a 6-dimensional null space, which the servo and trim weights resolve.
     /// </summary>
     public static class GimbalAllocation
     {
         public const int Thrusters = 4;
 
-        /// <summary>4 servo angles then 4 throttles.</summary>
-        public const int ControlCount = 8;
+        /// <summary>4 pitch angles, then 4 yaw angles, then 4 throttles.</summary>
+        public const int ControlCount = 12;
 
-        /// <summary>Wrench components the rig can reach: lift, drive, pitch, yaw, roll.</summary>
-        public const int WrenchRows = 5;
+        /// <summary>Wrench components the rig can reach: lateral, lift, drive, pitch, yaw, roll.</summary>
+        public const int WrenchRows = 6;
 
-        /// <summary>Servo angle of thruster i, radians.</summary>
-        public static float Angle(in floatN z, int i) => z[i];
+        /// <summary>
+        /// Hard cap on either gimbal angle, degrees; <see cref="BuildRig"/> clamps the settings to it.
+        ///
+        /// This is a LIFT FLOOR, not a numerical guard. At pitch = ±90° the thrust lies flat along the
+        /// hull's fore-aft axis and that nozzle carries none of the hull's weight, which is not a place
+        /// a hover vehicle ever wants to be. The cap keeps cos(pitch) >= 0.5, so every nozzle always
+        /// puts at least half its thrust into lift.
+        ///
+        /// Staying clear of the parametrization's degenerate direction (see
+        /// <see cref="ForceDirection"/>) is a welcome side effect, not the reason: the regularized
+        /// Hessian (<see cref="Hessian"/>) turns a rank drop into a min-norm step rather than an
+        /// undefined one, so the allocation stays well posed at the pole regardless.
+        /// </summary>
+        public const float MaxGimbalDeg = 60f;
+
+        /// <summary>Pitch-axis gimbal angle of thruster i, radians.</summary>
+        public static float PitchAngle(in floatN z, int i) => z[i];
+
+        /// <summary>Yaw-axis gimbal angle of thruster i, radians.</summary>
+        public static float YawAngle(in floatN z, int i) => z[Thrusters + i];
 
         /// <summary>Throttle of thruster i, fraction of <see cref="GimbalRig.MaxThrust"/>.</summary>
-        public static float Throttle(in floatN z, int i) => z[Thrusters + i];
+        public static float Throttle(in floatN z, int i) => z[2 * Thrusters + i];
 
-        /// <summary>Hull-local force direction of a servo at <paramref name="angle"/>: straight up at
-        /// 0, forward at +90°, backward at -90°. Unit length.</summary>
-        public static float3 ForceDirection(float angle)
+        /// <summary>
+        /// Hull-local force direction of a nozzle gimballed to (<paramref name="pitch"/>,
+        /// <paramref name="yaw"/>), radians. Straight up at (0, 0); pitch tilts the thrust toward
+        /// hull +z at +90°, yaw tilts it toward hull +x at +90°. Unit length.
+        ///
+        /// WHERE THE POLE SITS is a property of this parametrization, and it was chosen. d(dir)/d(yaw)
+        /// carries a cos(pitch) factor, so the yaw axis degenerates at pitch = ±90° — thrust fully fore
+        /// or aft, a pose the vehicle is never flown to. Parametrize the same spherical cap as tilt
+        /// magnitude plus azimuth instead and the degenerate direction moves to zero tilt, thrust
+        /// straight up, which is exactly where a hover vehicle lives. Same cap, same algebra, and the
+        /// singular pose goes from unreachable to permanent.
+        /// </summary>
+        public static float3 ForceDirection(float pitch, float yaw)
         {
-            math.sincos(angle, out float s, out float c);
-            return new float3(0f, c, s);
+            math.sincos(pitch, out float sp, out float cp);
+            math.sincos(yaw, out float sy, out float cy);
+            return new float3(sy * cp, cy * cp, sp);
         }
 
         /// <summary>
@@ -176,16 +220,12 @@ namespace LinearAlgebraDemos
             var w = new GimbalWrench();
             for (int i = 0; i < Thrusters; i++)
             {
-                math.sincos(z[i], out float s, out float c);
-                float q = health[i] * z[Thrusters + i] * rig.MaxThrust;
-                float fy = q * c, fz = q * s;
-                float x = mx[i], y = my[i], zz = mz[i];
+                float q = health[i] * z[2 * Thrusters + i] * rig.MaxThrust;
+                float3 f = q * ForceDirection(z[i], z[Thrusters + i]);
+                float3 t = math.cross(new float3(mx[i], my[i], mz[i]), f);
 
-                w.Lift += fy;
-                w.Drive += fz;
-                w.Pitch += y * fz - zz * fy;
-                w.Yaw += -x * fz;
-                w.Roll += x * fy;
+                w.Lateral += f.x; w.Lift += f.y; w.Drive += f.z;
+                w.Pitch += t.x; w.Yaw += t.y; w.Roll += t.z;
             }
             return w;
         }
@@ -202,24 +242,43 @@ namespace LinearAlgebraDemos
 
             for (int i = 0; i < Thrusters; i++)
             {
-                int ct = i, cu = Thrusters + i;
-                math.sincos(z[ct], out float s, out float c);
+                int colP = i, colY = Thrusters + i, colU = 2 * Thrusters + i;
+                math.sincos(z[colP], out float sp, out float cp);
+                math.sincos(z[colY], out float sy, out float cy);
 
-                float x = mx[i], y = my[i], zz = mz[i];
+                float3 r = new float3(mx[i], my[i], mz[i]);
                 float g = health[i] * rig.MaxThrust;   // d|F| / d throttle
-                float q = g * z[cu];                   // |F| now
+                float q = g * z[colU];                 // |F| now
 
-                A[0, ct] = -q * s * invF;
-                A[1, ct] = q * c * invF;
-                A[2, ct] = q * (y * c + zz * s) * invT;
-                A[3, ct] = -x * q * c * invT;
-                A[4, ct] = -x * q * s * invT;
+                // Direction derivatives of (sy·cp, cy·cp, sp). The yaw column's cos(pitch) factor is
+                // where this parametrization degenerates; see ForceDirection for why that pose is
+                // outside the envelope, and Hessian for what happens if it is entered anyway.
+                Column(ref A, colP, q * new float3(-sy * sp, -cy * sp, cp), r, invF, invT);
+                Column(ref A, colY, q * new float3(cy * cp, -sy * cp, 0f), r, invF, invT);
+                Column(ref A, colU, g * new float3(sy * cp, cy * cp, sp), r, invF, invT);
+            }
+        }
 
-                A[0, cu] = g * c * invF;
-                A[1, cu] = g * s * invF;
-                A[2, cu] = g * (y * s - zz * c) * invT;
-                A[3, cu] = -x * g * s * invT;
-                A[4, cu] = x * g * c * invT;
+        /// <summary>
+        /// Q = JᵀJ plus the regularizer diagonals: <see cref="GimbalRig.ServoWeight"/> on all 8 angle
+        /// controls and <see cref="GimbalRig.TrimWeight"/> on the 4 throttles. <paramref name="Q"/> is
+        /// <see cref="ControlCount"/> square and is fully overwritten.
+        ///
+        /// JᵀJ has rank at most <see cref="WrenchRows"/> of <see cref="ControlCount"/>; a dead thruster
+        /// zeroes three more columns and a nozzle at the parametrization's pole zeroes its yaw column.
+        /// The two weights are the ONLY thing making Q positive definite, and they do it
+        /// unconditionally — min eig(Q) >= min(ServoWeight, TrimWeight), which the settings keep above
+        /// zero. Tikhonov, so a rank drop costs a min-norm step, not a failed solve.
+        /// </summary>
+        public static void Hessian(in GimbalRig rig, in floatMxN J, ref floatMxN Q)
+        {
+            Blas.dotSym(in J, in J, ref Q);            // JᵀJ, exactly symmetric
+
+            for (int i = 0; i < Thrusters; i++)
+            {
+                Q[i, i] += rig.ServoWeight;
+                Q[Thrusters + i, Thrusters + i] += rig.ServoWeight;
+                Q[2 * Thrusters + i, 2 * Thrusters + i] += rig.TrimWeight;
             }
         }
 
@@ -235,8 +294,9 @@ namespace LinearAlgebraDemos
             in floatN z, float dt, float weight, float arm)
         {
             float maxThrust = math.max(s.maxThrust, 1f);
-            float angLo = math.radians(math.min(s.servoMinDeg, s.servoMaxDeg));
-            float angHi = math.radians(math.max(s.servoMinDeg, s.servoMaxDeg));
+            float lim = math.radians(MaxGimbalDeg);
+            float angLo = math.clamp(math.radians(math.min(s.servoMinDeg, s.servoMaxDeg)), -lim, lim);
+            float angHi = math.clamp(math.radians(math.max(s.servoMinDeg, s.servoMaxDeg)), -lim, lim);
             float thrLo = math.saturate(math.min(s.minThrust, maxThrust) / maxThrust);
             float angRate = math.radians(s.servoRateDeg) * dt;
             float thrRate = (s.thrustRate / maxThrust) * dt;
@@ -266,11 +326,15 @@ namespace LinearAlgebraDemos
                 rig.ThrottleLo[i] = thrLo;
                 rig.ThrottleHi[i] = tHi;
 
-                DeltaBounds(z[i], angLo, angHi, angRate, out float daLo, out float daHi);
-                rig.DAngleLo[i] = daLo;
-                rig.DAngleHi[i] = daHi;
+                DeltaBounds(z[i], angLo, angHi, angRate, out float dpLo, out float dpHi);
+                rig.DPitchLo[i] = dpLo;
+                rig.DPitchHi[i] = dpHi;
 
-                DeltaBounds(z[Thrusters + i], thrLo, tHi, thrRate, out float dtLo, out float dtHi);
+                DeltaBounds(z[Thrusters + i], angLo, angHi, angRate, out float dyLo, out float dyHi);
+                rig.DYawLo[i] = dyLo;
+                rig.DYawHi[i] = dyHi;
+
+                DeltaBounds(z[2 * Thrusters + i], thrLo, tHi, thrRate, out float dtLo, out float dtHi);
                 rig.DThrottleLo[i] = dtLo;
                 rig.DThrottleHi[i] = dtHi;
             }
@@ -295,33 +359,32 @@ namespace LinearAlgebraDemos
             // ½‖J·delta + e‖² plus the two regularizers.
             GimbalWrench w0 = Wrench(in rig, in z);
             var e = new floatN(WrenchRows, Allocator.Temp, true);
-            e[0] = (w0.Lift - desired.Lift) / rig.ForceScale;
-            e[1] = (w0.Drive - desired.Drive) / rig.ForceScale;
-            e[2] = (w0.Pitch - desired.Pitch) / rig.TorqueScale;
-            e[3] = (w0.Yaw - desired.Yaw) / rig.TorqueScale;
-            e[4] = (w0.Roll - desired.Roll) / rig.TorqueScale;
+            e[0] = (w0.Lateral - desired.Lateral) / rig.ForceScale;
+            e[1] = (w0.Lift - desired.Lift) / rig.ForceScale;
+            e[2] = (w0.Drive - desired.Drive) / rig.ForceScale;
+            e[3] = (w0.Pitch - desired.Pitch) / rig.TorqueScale;
+            e[4] = (w0.Yaw - desired.Yaw) / rig.TorqueScale;
+            e[5] = (w0.Roll - desired.Roll) / rig.TorqueScale;
 
             var Q = new floatMxN(ControlCount, ControlCount, Allocator.Temp, true);
-            Blas.dotSym(in J, in J, ref Q);            // JᵀJ, exactly symmetric
+            Hessian(in rig, in J, ref Q);
 
             var c = new floatN(ControlCount, Allocator.Temp, true);
             Blas.dot(in e, in J, ref c);               // Jᵀe
 
+            float4 pLo = rig.DPitchLo, pHi = rig.DPitchHi;
+            float4 yLo = rig.DYawLo, yHi = rig.DYawHi;
             float4 tLo = rig.DThrottleLo, tHi = rig.DThrottleHi;
-            float4 aLo = rig.DAngleLo, aHi = rig.DAngleHi;
             var xl = new floatN(ControlCount, Allocator.Temp, true);
             var xu = new floatN(ControlCount, Allocator.Temp, true);
 
-            // JᵀJ has rank 5 at most, so the two regularizers are what make Q positive definite --
-            // including when a dead thruster leaves its two J columns entirely zero.
             for (int i = 0; i < Thrusters; i++)
             {
-                Q[i, i] += rig.ServoWeight;
-                Q[Thrusters + i, Thrusters + i] += rig.TrimWeight;
-                c[Thrusters + i] += rig.TrimWeight * (z[Thrusters + i] - rig.TrimThrottle);
+                c[2 * Thrusters + i] += rig.TrimWeight * (z[2 * Thrusters + i] - rig.TrimThrottle);
 
-                xl[i] = aLo[i]; xu[i] = aHi[i];
-                xl[Thrusters + i] = tLo[i]; xu[Thrusters + i] = tHi[i];
+                xl[i] = pLo[i]; xu[i] = pHi[i];
+                xl[Thrusters + i] = yLo[i]; xu[Thrusters + i] = yHi[i];
+                xl[2 * Thrusters + i] = tLo[i]; xu[2 * Thrusters + i] = tHi[i];
             }
 
             var A = new floatMxN(0, ControlCount, Allocator.Temp);
@@ -350,8 +413,23 @@ namespace LinearAlgebraDemos
             for (int i = 0; i < Thrusters; i++)
             {
                 z[i] = math.clamp(z[i], aLo[i], aHi[i]);
-                z[Thrusters + i] = math.clamp(z[Thrusters + i], tLo[i], tHi[i]);
+                z[Thrusters + i] = math.clamp(z[Thrusters + i], aLo[i], aHi[i]);
+                z[2 * Thrusters + i] = math.clamp(z[2 * Thrusters + i], tLo[i], tHi[i]);
             }
+        }
+
+        // One Jacobian column: the force-derivative f already carries whatever control the column
+        // differentiates, and the torque rows are the same r x F the wrench accumulates, so the row
+        // order can only drift if both are edited.
+        static void Column(ref floatMxN A, int col, float3 f, float3 r, float invF, float invT)
+        {
+            float3 t = math.cross(r, f);
+            A[0, col] = f.x * invF;
+            A[1, col] = f.y * invF;
+            A[2, col] = f.z * invF;
+            A[3, col] = t.x * invT;
+            A[4, col] = t.y * invT;
+            A[5, col] = t.z * invT;
         }
 
         // Feasible change box for one control: the actuator's rate window intersected with what is

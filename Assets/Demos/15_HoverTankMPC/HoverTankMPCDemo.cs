@@ -10,36 +10,37 @@ using UnityEngine;
 namespace LinearAlgebraDemos
 {
     /// <summary>
-    /// Player-driven hover tank on FOUR GIMBALLED THRUSTERS, each with its own servo angle and
-    /// throttle, flying over procedural <see cref="TerrainField"/>. Drop on an empty GameObject and
-    /// press play. No turret: this demo is about the thruster rig.
+    /// Player-driven hover tank on FOUR TWO-AXIS GIMBALLED THRUSTERS, each with a pitch servo, a yaw
+    /// servo and a throttle, flying over procedural <see cref="TerrainField"/>. Drop on an empty
+    /// GameObject and press play. No turret: this demo is about the thruster rig.
     ///
     /// Mouse X turns the hull and mouse Y raises or lowers the commanded ride height, with the cursor
-    /// captured; ESC releases it to the on-screen panel and back. W/S drive · A/D yaw as well · SPACE
-    /// brakes both forward speed and yaw rate. Hands off, weak idle damping settles the tank instead
-    /// of letting it free-float.
+    /// captured; ESC releases it to the on-screen panel and back. W/S drive · Q/E strafe · A/D yaw as
+    /// well · SPACE brakes forward speed, sideways speed and yaw rate. Hands off, weak idle damping
+    /// settles the tank instead of letting it free-float.
     ///
     /// Every axis reaches the thrusters through one control-allocation solve:
     ///
     /// 1. A 6-state discrete LQR (height error, vertical velocity, roll, roll rate, pitch, pitch rate)
     ///    sensed from 4 corner-down raycasts, producing vertical/roll/pitch acceleration commands.
-    /// 2. A control-allocation QP that turns those commands plus the driver's forward/yaw demand — and
-    ///    the braking and idle-damping terms, which are wrench demands like everything else rather
-    ///    than forces written onto the rigid body — into the 8 thruster controls, under servo
-    ///    range/rate and thrust range/rate limits. See <see cref="GimbalAllocation"/>: 8 controls
-    ///    against 5 reachable wrench components, so the rig is over-actuated and the solve is what
+    /// 2. A control-allocation QP that turns those commands plus the driver's forward/strafe/yaw
+    ///    demand — and the braking and idle-damping terms, which are wrench demands like everything
+    ///    else rather than forces written onto the rigid body — into the 12 thruster controls, under
+    ///    servo range/rate and thrust range/rate limits. See <see cref="GimbalAllocation"/>: 12
+    ///    controls against 6 wrench components, so the rig is over-actuated and the solve is what
     ///    decides how the work is shared.
     ///
     /// The corner raycasts are the only ground sense, and the attitude estimate is built from the
     /// DIFFERENCES between them, so it cannot separate hull tilt from terrain slope — see
     /// <see cref="HoverTankMPCStepJob.Execute"/> for what that costs over sloping ground.
     ///
-    /// There is no lateral force anywhere in the rig: every thrust vector lies in a forward-up plane,
-    /// so their sum does too. Sideways motion is reachable only through roll, quadcopter-style, which
-    /// is why there is no strafe binding and why braking and damping only oppose along-track speed.
+    /// The four THRUST MOUNTS sit on the side flanks at hull mid-height (x = ±halfWidth, y = 0,
+    /// z = ±halfLength), which is a different set of points from the four SENSE CORNERS on the bottom
+    /// face that the raycasts fire from. A mount at y = 0 turns forward thrust into pure yaw, with no
+    /// pitch moment for the hover loop to fight.
     ///
     /// Self-assembles terrain, hull and a chase camera in <see cref="Start"/> (sceneless, like the
-    /// other demos).
+    /// other demos), including one <see cref="ParticleSystem"/> plume per nozzle.
     /// </summary>
     public class HoverTankMPCDemo : MonoBehaviour
     {
@@ -69,6 +70,8 @@ namespace LinearAlgebraDemos
 
         [Header("Driver demand (routed through the allocation)")]
         [Range(1000f, 40000f)] public float driveForce = 9000f;
+        [Tooltip("Peak sideways force, newtons. Lateral authority is bought out of the same thrust that carries the hull, so this stays under driveForce.")]
+        [Range(1000f, 40000f)] public float strafeForce = 7000f;
         [Range(1000f, 40000f)] public float steerTorque = 9000f;
         [Tooltip("Peak braking force. Kept below driveForce so the brake cannot starve attitude control.")]
         [Range(1000f, 30000f)] public float brakeForce = 8000f;
@@ -91,15 +94,19 @@ namespace LinearAlgebraDemos
         [Range(1f, 30f)] public float camLag = 6f;
 
         static readonly string[] MountNames = { "FL", "FR", "BL", "BR" };
-        static readonly Rect PanelRect = new Rect(10, 10, 520, 560);
+        static readonly Rect PanelRect = new Rect(10, 10, 560, 590);
 
         // self-assembled scene objects (Start)
         GameObject groundGO, hullGO, hullVisualGO;
         readonly Transform[] thrusterPivots = new Transform[4];
+        readonly ParticleSystem[] plumes = new ParticleSystem[4];
+        Material plumeMaterial;
+        Texture2D plumeTexture;
         Camera chaseCam;
         Rigidbody rb;
-        Vector3[] cornerLocal;     // FL, FR, BL, BR — metric offsets from the hull center of mass
-        float cornerDX, cornerDZ;  // horizontal corner offsets shared by sensing + allocation
+        Vector3[] cornerLocal;     // FL, FR, BL, BR sense points on the bottom face
+        Vector3[] mountLocal;      // FL, FR, BL, BR thrust mounts on the side flanks
+        float cornerDX, cornerDZ;  // horizontal sense-corner offsets, shared with the attitude estimate
         float4 mountX, mountY, mountZ;
         float mountArm;            // lever arm the torque residual scale is measured against
         float4 thrusterHealth = new float4(1f);
@@ -108,7 +115,7 @@ namespace LinearAlgebraDemos
         bool mouseCaptured = true; // driving mode; ESC releases the cursor to the panel
         bool4 cornerReturn;        // whether each corner ray found ground this step
         // last step's inputs and measured rates, cached so the readout can name the axis owner
-        float lastSteer, lastForwardSpeed, lastYawRate;
+        float lastSteer, lastStrafe, lastForwardSpeed, lastLateralSpeed, lastYawRate;
         bool lastBrake;
 
         // hover loop buffers (persistent — never allocated inside the job)
@@ -120,9 +127,9 @@ namespace LinearAlgebraDemos
         NativeArray<float> hoverOut;      // [0] iters [1] converged [2] residual [3] rank-deficient
 
         // allocation buffers
-        NativeArray<float> controls;      // 4 servo angles (rad) then 4 throttles (fraction)
+        NativeArray<float> controls;      // 4 pitch angles, 4 yaw angles (rad), then 4 throttles
         NativeArray<QPInfo> allocOut;
-        NativeArray<float> wrenchOut;     // 5 demanded then 5 achieved (N, N*m)
+        NativeArray<float> wrenchOut;     // 6 demanded then 6 achieved (N, N*m)
 
         bool hoverDivergedLogged, allocFailedLogged;
         float frameMs;
@@ -140,7 +147,7 @@ namespace LinearAlgebraDemos
 
             controls = new NativeArray<float>(GimbalAllocation.ControlCount, Allocator.Persistent);
             allocOut = new NativeArray<QPInfo>(1, Allocator.Persistent);
-            wrenchOut = new NativeArray<float>(10, Allocator.Persistent);
+            wrenchOut = new NativeArray<float>(2 * GimbalAllocation.WrenchRows, Allocator.Persistent);
 
             // Seed both height buffers at the setpoint: a corner that has never had a return still has
             // to hand the estimate something, and the setpoint is the one value that commands nothing.
@@ -164,6 +171,9 @@ namespace LinearAlgebraDemos
             if (controls.IsCreated) controls.Dispose();
             if (allocOut.IsCreated) allocOut.Dispose();
             if (wrenchOut.IsCreated) wrenchOut.Dispose();
+
+            if (plumeMaterial != null) Destroy(plumeMaterial);
+            if (plumeTexture != null) Destroy(plumeTexture);
         }
 
         void BuildScene()
@@ -192,6 +202,8 @@ namespace LinearAlgebraDemos
             hullVisualGO.GetComponent<Renderer>().material.color = new Color(0.25f, 0.55f, 0.3f);
             Destroy(hullVisualGO.GetComponent<Collider>());
 
+            // Sense points stay on the BOTTOM FACE, inset so their down-rays clear the hull: they feed
+            // the ride-height and attitude estimate and have nothing to do with where thrust is applied.
             cornerDX = hullHalfWidth * 0.9f;
             cornerDZ = hullHalfLength * 0.9f;
             float cornerY = -hullHeight * 0.5f;
@@ -203,19 +215,32 @@ namespace LinearAlgebraDemos
                 new Vector3(+cornerDX, cornerY, -cornerDZ),   // BR
             };
 
-            mountX = new float4(cornerLocal[0].x, cornerLocal[1].x, cornerLocal[2].x, cornerLocal[3].x);
-            mountY = new float4(cornerLocal[0].y, cornerLocal[1].y, cornerLocal[2].y, cornerLocal[3].y);
-            mountZ = new float4(cornerLocal[0].z, cornerLocal[1].z, cornerLocal[2].z, cornerLocal[3].z);
-            mountArm = math.max(cornerDX, cornerDZ);
+            // Thrust mounts sit on the SIDE FLANKS at hull mid-height. y = 0 is the load-bearing part:
+            // the moment of a purely forward thrust is then r x F = (0, -x*Fz, 0), pure yaw, so driving
+            // no longer pitches the nose and the servos no longer have to trade angle to cancel it.
+            mountLocal = new[]
+            {
+                new Vector3(-hullHalfWidth, 0f, +hullHalfLength),   // FL
+                new Vector3(+hullHalfWidth, 0f, +hullHalfLength),   // FR
+                new Vector3(-hullHalfWidth, 0f, -hullHalfLength),   // BL
+                new Vector3(+hullHalfWidth, 0f, -hullHalfLength),   // BR
+            };
 
-            // One pivot per mount, rotated by that servo's angle every step: local +y is the thrust
-            // direction and local -y the exhaust, so the nozzle hanging below it swings the way the
-            // allocation is steering the thrust.
+            mountX = new float4(mountLocal[0].x, mountLocal[1].x, mountLocal[2].x, mountLocal[3].x);
+            mountY = new float4(mountLocal[0].y, mountLocal[1].y, mountLocal[2].y, mountLocal[3].y);
+            mountZ = new float4(mountLocal[0].z, mountLocal[1].z, mountLocal[2].z, mountLocal[3].z);
+            mountArm = math.max(hullHalfWidth, hullHalfLength);
+
+            BuildPlumeAssets();
+
+            // One pivot per mount, rotated by that nozzle's two gimbal angles every step: local +y is
+            // the thrust direction and local -y the exhaust, so the nozzle hanging below it swings the
+            // way the allocation is steering the thrust.
             for (int i = 0; i < 4; i++)
             {
                 var pivot = new GameObject($"HoverTankMPC_Thruster_{MountNames[i]}");
                 pivot.transform.SetParent(hullGO.transform, worldPositionStays: false);
-                pivot.transform.localPosition = cornerLocal[i];
+                pivot.transform.localPosition = mountLocal[i];
                 thrusterPivots[i] = pivot.transform;
 
                 var nozzle = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -225,6 +250,8 @@ namespace LinearAlgebraDemos
                 nozzle.transform.localPosition = new Vector3(0f, -0.35f, 0f);
                 nozzle.GetComponent<Renderer>().material.color = new Color(0.15f, 0.15f, 0.18f);
                 Destroy(nozzle.GetComponent<Collider>());
+
+                plumes[i] = BuildPlume(pivot.transform);
             }
 
             // Reuse whatever camera and light the scene already has; only build one if there is none.
@@ -246,9 +273,10 @@ namespace LinearAlgebraDemos
             SnapCamera();
         }
 
-        // Rotation only: the mount offsets are metric and must stay that way even if someone scales
-        // the hull root later.
-        Vector3 MountWorld(int i) => hullGO.transform.position + hullGO.transform.rotation * cornerLocal[i];
+        // Rotation only: the offsets are metric and must stay that way even if someone scales the hull
+        // root later.
+        Vector3 CornerWorld(int i) => hullGO.transform.position + hullGO.transform.rotation * cornerLocal[i];
+        Vector3 MountWorld(int i) => hullGO.transform.position + hullGO.transform.rotation * mountLocal[i];
 
         void ResetControls()
         {
@@ -259,9 +287,105 @@ namespace LinearAlgebraDemos
 
             for (int i = 0; i < 4; i++)
             {
-                controls[i] = 0f;
-                controls[4 + i] = trim;
+                controls[i] = 0f;              // pitch gimbal
+                controls[4 + i] = 0f;          // yaw gimbal
+                controls[8 + i] = trim;
             }
+        }
+
+        // A radial-falloff sprite and one shared unlit material for all four plumes. The demo is
+        // sceneless, so there is no asset to reference: the shader is whichever of the candidates the
+        // active render pipeline actually has, and a null one leaves the ParticleSystem's own default
+        // material in place rather than failing the build.
+        void BuildPlumeAssets()
+        {
+            const int size = 32;
+            plumeTexture = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            var px = new Color[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = (x + 0.5f) / size * 2f - 1f, dy = (y + 0.5f) / size * 2f - 1f;
+                    float a = Mathf.Clamp01(1f - Mathf.Sqrt(dx * dx + dy * dy));
+                    px[y * size + x] = new Color(1f, 1f, 1f, a * a);
+                }
+            plumeTexture.SetPixels(px);
+            plumeTexture.Apply();
+
+            // Sequential, not ??: UnityEngine.Object overloads == for its own null, which ?? bypasses.
+            Shader sh = Shader.Find("Sprites/Default");
+            if (sh == null) sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (sh == null) sh = Shader.Find("Particles/Standard Unlit");
+            if (sh == null) return;
+
+            plumeMaterial = new Material(sh) { name = "HoverTankMPC_Plume", mainTexture = plumeTexture };
+        }
+
+        // World-space so the plume trails the moving hull instead of riding with it. The child is
+        // rotated a quarter turn about x because a ParticleSystem emits along its own +z, and the
+        // exhaust runs down the pivot's -y.
+        ParticleSystem BuildPlume(Transform pivot)
+        {
+            var go = new GameObject("Plume");
+            go.transform.SetParent(pivot, worldPositionStays: false);
+            go.transform.localPosition = new Vector3(0f, -0.7f, 0f);
+            go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+            var ps = go.AddComponent<ParticleSystem>();
+
+            var main = ps.main;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.startLifetime = 0.35f;
+            main.startSize = 0.55f;
+            main.startSpeed = 0f;
+            main.maxParticles = 64;
+            main.gravityModifier = 0f;
+            main.playOnAwake = true;
+
+            var shape = ps.shape;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = 8f;
+            shape.radius = 0.16f;
+
+            var emission = ps.emission;
+            emission.rateOverTime = 0f;
+
+            var sol = ps.sizeOverLifetime;
+            sol.enabled = true;
+            sol.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.5f, 1f, 1.6f));
+
+            // Everything else off: the plume is a readout of one number, not a VFX budget.
+            var collision = ps.collision; collision.enabled = false;
+            var trails = ps.trails; trails.enabled = false;
+            var psNoise = ps.noise; psNoise.enabled = false;
+            var lights = ps.lights; lights.enabled = false;
+
+            var psRenderer = go.GetComponent<ParticleSystemRenderer>();
+            psRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+            psRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            psRenderer.receiveShadows = false;
+            if (plumeMaterial != null) psRenderer.sharedMaterial = plumeMaterial;
+
+            ps.Play();
+            return ps;
+        }
+
+        // The plume IS the commanded throttle: rate, exhaust speed and colour all read off it, so what
+        // the allocation decided is visible without opening the panel.
+        void UpdatePlume(int i, float throttle, bool live)
+        {
+            ParticleSystem ps = plumes[i];
+            if (ps == null) return;
+
+            float t = live ? Mathf.Clamp01(throttle) : 0f;
+
+            var emission = ps.emission;
+            emission.rateOverTime = 90f * t;
+
+            var main = ps.main;
+            main.startSpeed = 6f + 26f * t;
+            main.startColor = Color.Lerp(new Color(0.35f, 0.65f, 1f, 0.30f),
+                                         new Color(1f, 0.55f, 0.20f, 0.85f), t);
         }
 
         void OnEnable() => ApplyCursor(mouseCaptured);
@@ -320,7 +444,7 @@ namespace LinearAlgebraDemos
             // than as a step.
             for (int i = 0; i < 4; i++)
             {
-                Vector3 world = MountWorld(i) + Vector3.down * 0.02f;
+                Vector3 world = CornerWorld(i) + Vector3.down * 0.02f;
                 cornerReturn[i] = Physics.Raycast(world, Vector3.down, out RaycastHit hit, rayLength);
                 if (cornerReturn[i]) cornerHeights[i] = hit.distance;
             }
@@ -329,8 +453,10 @@ namespace LinearAlgebraDemos
             float mouseSteer = lookX * lookSensitivity;
             lookX = 0f;
             lastSteer = Mathf.Clamp(Input.GetAxis("Horizontal") + mouseSteer, -1f, 1f);
+            lastStrafe = (Input.GetKey(KeyCode.E) ? 1f : 0f) - (Input.GetKey(KeyCode.Q) ? 1f : 0f);
             lastBrake = Input.GetKey(KeyCode.Space);
             lastForwardSpeed = Vector3.Dot(rb.linearVelocity, hullGO.transform.forward);
+            lastLateralSpeed = Vector3.Dot(rb.linearVelocity, hullGO.transform.right);
             lastYawRate = Vector3.Dot(rb.angularVelocity, hullGO.transform.up);
 
             var job = new HoverTankMPCStepJob
@@ -348,11 +474,13 @@ namespace LinearAlgebraDemos
                 Settings = thrusters, Health = thrusterHealth,
                 MountX = mountX, MountY = mountY, MountZ = mountZ, MountArm = mountArm,
                 DriveInput = Input.GetAxis("Vertical"), DriveForce = driveForce,
+                StrafeInput = lastStrafe, StrafeForce = strafeForce,
                 SteerInput = lastSteer, SteerTorque = steerTorque,
                 BrakeInput = lastBrake,
                 BrakeForce = brakeForce, BrakeGain = brakeGain, BrakeYawGain = brakeYawGain,
                 IdleLinearGain = idleLinearGain, IdleAngularGain = idleAngularGain,
                 ForwardSpeed = lastForwardSpeed,
+                LateralSpeed = lastLateralSpeed,
                 YawRate = lastYawRate,
                 TiltCos = Vector3.Dot(hullGO.transform.up, Vector3.up),
             };
@@ -367,19 +495,28 @@ namespace LinearAlgebraDemos
             LogOnceIfDiverged(hoverOut[1] == 1f, ref hoverDivergedLogged, "hover LQR");
             LogOnceIfDiverged(allocOut[0].status == QPStatus.Optimal, ref allocFailedLogged, "allocation QP");
 
-            // ---- apply thrust: one force per thruster, at its mount, along its servo direction ----
+            // ---- apply thrust: one force per thruster, at its mount, along its gimbal direction ----
             // AddForceAtPosition reproduces both the force and its moment about the center of mass,
             // which is the wrench the allocation solved for.
             for (int i = 0; i < 4; i++)
             {
-                float3 dir = GimbalAllocation.ForceDirection(controls[i]);
-                float magnitude = controls[4 + i] * thrusters.maxThrust * thrusterHealth[i];
+                float pitch = controls[i], yaw = controls[4 + i], throttle = controls[8 + i];
+                float3 dir = GimbalAllocation.ForceDirection(pitch, yaw);
+                float magnitude = throttle * thrusters.maxThrust * thrusterHealth[i];
                 Vector3 worldDir = hullGO.transform.TransformDirection(new Vector3(dir.x, dir.y, dir.z));
                 rb.AddForceAtPosition(worldDir * magnitude, MountWorld(i), ForceMode.Force);
 
-                thrusterPivots[i].localRotation = Quaternion.Euler(controls[i] * Mathf.Rad2Deg, 0f, 0f);
+                thrusterPivots[i].localRotation = GimbalRotation(pitch, yaw);
+                UpdatePlume(i, throttle, thrusterHealth[i] > 0f);
             }
         }
+
+        // Pitch servo first, yaw servo outboard of it, matching the pitch-then-yaw chain
+        // GimbalAllocation.ForceDirection differentiates: the result maps local +y onto that
+        // direction, so the nozzle and its plume point down the exhaust.
+        static Quaternion GimbalRotation(float pitch, float yaw)
+            => Quaternion.AngleAxis(-yaw * Mathf.Rad2Deg, Vector3.forward)
+             * Quaternion.AngleAxis(pitch * Mathf.Rad2Deg, Vector3.right);
 
         void LateUpdate()
         {
@@ -423,64 +560,69 @@ namespace LinearAlgebraDemos
 
             for (int i = 0; i < 4; i++)
             {
-                Vector3 world = MountWorld(i);
+                Vector3 world = CornerWorld(i);
                 // A held corner is drawn dim: what the estimate is using is not what was measured.
                 Gizmos.color = cornerReturn[i] ? Color.cyan : new Color(0.3f, 0.3f, 0.35f);
                 Gizmos.DrawLine(world, world + Vector3.down * cornerHeights[i]);
                 Gizmos.DrawSphere(world + Vector3.down * cornerHeights[i], 0.08f);
             }
 
-            float angLo = Mathf.Min(thrusters.servoMinDeg, thrusters.servoMaxDeg) * Mathf.Deg2Rad;
-            float angHi = Mathf.Max(thrusters.servoMinDeg, thrusters.servoMaxDeg) * Mathf.Deg2Rad;
+            float lim = GimbalAllocation.MaxGimbalDeg;
+            float angLo = Mathf.Clamp(Mathf.Min(thrusters.servoMinDeg, thrusters.servoMaxDeg), -lim, lim) * Mathf.Deg2Rad;
+            float angHi = Mathf.Clamp(Mathf.Max(thrusters.servoMinDeg, thrusters.servoMaxDeg), -lim, lim) * Mathf.Deg2Rad;
 
             for (int i = 0; i < 4; i++)
             {
                 Vector3 mount = MountWorld(i);
-                bool live = thrusterHealth[i] > 0f;
+                float pitch = controls[i], yaw = controls[4 + i], throttle = controls[8 + i];
 
-                // servo travel arc, swept on the exhaust side
+                // The two gimbal travel arcs, each swept on the exhaust side through the other axis'
+                // current angle, so the pair shows the cap actually reachable from here.
                 Gizmos.color = new Color(0.4f, 0.4f, 0.45f);
-                Vector3 prev = ExhaustPoint(mount, angLo, 0.9f);
+                Vector3 prevP = ExhaustPoint(mount, angLo, yaw, 0.9f);
+                Vector3 prevY = ExhaustPoint(mount, pitch, angLo, 0.9f);
                 for (int k = 1; k <= 10; k++)
                 {
-                    Vector3 next = ExhaustPoint(mount, Mathf.Lerp(angLo, angHi, k / 10f), 0.9f);
-                    Gizmos.DrawLine(prev, next);
-                    prev = next;
+                    float a = Mathf.Lerp(angLo, angHi, k / 10f);
+                    Vector3 nextP = ExhaustPoint(mount, a, yaw, 0.9f);
+                    Vector3 nextY = ExhaustPoint(mount, pitch, a, 0.9f);
+                    Gizmos.DrawLine(prevP, nextP);
+                    Gizmos.DrawLine(prevY, nextY);
+                    prevP = nextP; prevY = nextY;
                 }
 
                 // commanded exhaust, length proportional to throttle
-                float throttle = controls[4 + i];
-                Gizmos.color = live ? Color.Lerp(Color.green, Color.red, throttle) : Color.gray;
-                Gizmos.DrawLine(mount, ExhaustPoint(mount, controls[i], 0.7f + 3f * throttle));
+                Gizmos.color = thrusterHealth[i] > 0f ? Color.Lerp(Color.green, Color.red, throttle) : Color.gray;
+                Gizmos.DrawLine(mount, ExhaustPoint(mount, pitch, yaw, 0.7f + 3f * throttle));
                 Gizmos.DrawSphere(mount, 0.09f);
             }
         }
 
-        // The nozzle points opposite the force it produces: down at servo angle 0.
-        Vector3 ExhaustPoint(Vector3 mount, float angle, float length)
+        // The nozzle points opposite the force it produces: down at gimbal angles (0, 0).
+        Vector3 ExhaustPoint(Vector3 mount, float pitch, float yaw, float length)
         {
-            float3 dir = GimbalAllocation.ForceDirection(angle);
+            float3 dir = GimbalAllocation.ForceDirection(pitch, yaw);
             return mount + hullGO.transform.TransformDirection(new Vector3(-dir.x, -dir.y, -dir.z)) * length;
         }
 
         void OnGUI()
         {
             GUILayout.BeginArea(PanelRect, GUI.skin.box);
-            GUILayout.Label($"Hover tank over terrain — {frameMs:F3} ms/frame (3x6 hover LQR + 8-control allocation QP)");
-            GUILayout.Label($"Mouse X turn   Mouse Y climb/descend   W/S drive   A/D yaw   SPACE brake   ESC {(mouseCaptured ? "release cursor" : "RESUME DRIVING")}");
+            GUILayout.Label($"Hover tank over terrain — {frameMs:F3} ms/frame (3x6 hover LQR + 12-control allocation QP)");
+            GUILayout.Label($"Mouse X turn   Mouse Y climb   W/S drive   Q/E strafe   A/D yaw   SPACE brake   ESC {(mouseCaptured ? "release cursor" : "RESUME DRIVING")}");
             GUILayout.Label($"hover: converged={hoverOut[1] == 1f}  iters={hoverOut[0]:F0}  residual={hoverOut[2]:E1}   state: h={hoverState[0]:F2} roll={hoverState[2] * Mathf.Rad2Deg:F1} pitch={hoverState[4] * Mathf.Rad2Deg:F1}");
 
             QPInfo alloc = allocOut[0];
             GUILayout.Label($"alloc QP: {alloc.status}  pivots={alloc.iterations}  obj={alloc.objective:E2}");
-            GUILayout.Label($"force  N   lift {wrenchOut[5]:F0}/{wrenchOut[0]:F0}   drive {wrenchOut[6]:F0}/{wrenchOut[1]:F0}   (achieved/demanded)");
-            GUILayout.Label($"torque Nm  pitch {wrenchOut[7]:F0}/{wrenchOut[2]:F0}   yaw {wrenchOut[8]:F0}/{wrenchOut[3]:F0}   roll {wrenchOut[9]:F0}/{wrenchOut[4]:F0}");
-            GUILayout.Label($"yaw axis: {YawOwner()}   speed {lastForwardSpeed,5:F1} m/s   yaw rate {lastYawRate * Mathf.Rad2Deg,5:F0} deg/s");
+            GUILayout.Label($"force  N   lateral {wrenchOut[6]:F0}/{wrenchOut[0]:F0}   lift {wrenchOut[7]:F0}/{wrenchOut[1]:F0}   drive {wrenchOut[8]:F0}/{wrenchOut[2]:F0}   (achieved/demanded)");
+            GUILayout.Label($"torque Nm  pitch {wrenchOut[9]:F0}/{wrenchOut[3]:F0}   yaw {wrenchOut[10]:F0}/{wrenchOut[4]:F0}   roll {wrenchOut[11]:F0}/{wrenchOut[5]:F0}");
+            GUILayout.Label($"yaw axis: {YawOwner()}   speed {lastForwardSpeed,5:F1} m/s   strafe {lastLateralSpeed,5:F1} m/s   yaw rate {lastYawRate * Mathf.Rad2Deg,5:F0} deg/s");
             GUILayout.Label($"ride height cmd {targetRideHeight:F2} m   ground {GroundLabel()}   mouse {(mouseCaptured ? "CAPTURED" : "released")}");
 
             for (int i = 0; i < 4; i++)
             {
-                float throttle = controls[4 + i];
-                GUILayout.Label($"{MountNames[i]}  servo {controls[i] * Mathf.Rad2Deg,6:F1} deg   thrust {throttle * thrusters.maxThrust,7:F0} N ({throttle * 100f:F0}%)"
+                float throttle = controls[8 + i];
+                GUILayout.Label($"{MountNames[i]}  gimbal pitch {controls[i] * Mathf.Rad2Deg,6:F1} yaw {controls[4 + i] * Mathf.Rad2Deg,6:F1} deg   thrust {throttle * thrusters.maxThrust,7:F0} N ({throttle * 100f:F0}%)"
                     + (thrusterHealth[i] > 0f ? "" : "   DEAD"));
             }
 
@@ -498,11 +640,12 @@ namespace LinearAlgebraDemos
             qTilt = LabeledSlider($"Q tilt {qTilt:F0}", qTilt, 1f, 300f);
             lookSensitivity = LabeledSlider($"mouse sens {lookSensitivity:F2}", lookSensitivity, 0.01f, 1f);
             climbSensitivity = LabeledSlider($"climb sens {climbSensitivity:F2}m", climbSensitivity, 0.01f, 1f);
+            strafeForce = LabeledSlider($"strafe force {strafeForce:F0}N", strafeForce, 1000f, 40000f);
             brakeForce = LabeledSlider($"brake force {brakeForce:F0}N", brakeForce, 1000f, 30000f);
             brakeYawGain = LabeledSlider($"brake yaw {brakeYawGain:F0}Nm/(rad/s)", brakeYawGain, 500f, 30000f);
             idleLinearGain = LabeledSlider($"idle linear {idleLinearGain:F0}N/(m/s)", idleLinearGain, 0f, 5000f);
             idleAngularGain = LabeledSlider($"idle yaw {idleAngularGain:F0}Nm/(rad/s)", idleAngularGain, 0f, 15000f);
-            thrusters.servoMaxDeg = LabeledSlider($"servo range +{thrusters.servoMaxDeg:F0}deg", thrusters.servoMaxDeg, 0f, 85f);
+            thrusters.servoMaxDeg = LabeledSlider($"gimbal range +{thrusters.servoMaxDeg:F0}deg", thrusters.servoMaxDeg, 0f, GimbalAllocation.MaxGimbalDeg);
             thrusters.servoRateDeg = LabeledSlider($"servo rate {thrusters.servoRateDeg:F0}deg/s", thrusters.servoRateDeg, 15f, 720f);
 
             GUILayout.BeginHorizontal();
@@ -543,7 +686,7 @@ namespace LinearAlgebraDemos
             else owner = idleAngularGain > 0f ? "idle damping" : "free";
 
             float torqueScale = hullMass * -Physics.gravity.y * mountArm;
-            bool shortfall = Mathf.Abs(wrenchOut[8] - wrenchOut[3]) > 0.05f * torqueScale;
+            bool shortfall = Mathf.Abs(wrenchOut[10] - wrenchOut[4]) > 0.05f * torqueScale;
             return shortfall ? owner + "  [YAW SATURATED]" : owner;
         }
 
@@ -569,9 +712,9 @@ namespace LinearAlgebraDemos
     /// <summary>
     /// Per-fixed-step control law. Rebuilds the hover state from corner ride heights and warm-solves
     /// the 6-state hover LQR (3 acceleration commands: vertical, roll, pitch); resolves the driver's
-    /// forward/yaw/brake inputs into the rest of the demanded hull-frame <see cref="GimbalWrench"/>;
-    /// then allocates that onto 4 servo angles and 4 throttles with
-    /// <see cref="GimbalAllocation.Solve"/>. The LQR re-runs every step (warm
+    /// forward/strafe/yaw/brake inputs into the rest of the demanded hull-frame
+    /// <see cref="GimbalWrench"/>; then allocates that onto 4 pitch angles, 4 yaw angles and 4
+    /// throttles with <see cref="GimbalAllocation.Solve"/>. The LQR re-runs every step (warm
     /// <see cref="floatLQRState"/>, cheap once converged) to showcase the warm-start path.
     ///
     /// Caller must RunByRef and copy HoverLqrState back.
@@ -595,14 +738,19 @@ namespace LinearAlgebraDemos
 
         // driver
         public float DriveInput, DriveForce;
+        /// <summary>Q/E strafe demand in [-1, 1]; positive is to the hull's right.</summary>
+        public float StrafeInput;
+        public float StrafeForce;
         /// <summary>Mouse X and A/D already summed and clamped to [-1, 1].</summary>
         public float SteerInput;
         public float SteerTorque;
         public bool BrakeInput;
         public float BrakeForce, BrakeGain, BrakeYawGain;
         public float IdleLinearGain, IdleAngularGain;
-        /// <summary>Hull velocity along its own forward axis, m/s — the only component the rig can brake.</summary>
+        /// <summary>Hull velocity along its own forward axis, m/s.</summary>
         public float ForwardSpeed;
+        /// <summary>Hull velocity along its own right axis, m/s.</summary>
+        public float LateralSpeed;
         /// <summary>Hull yaw rate about its own up axis, rad/s.</summary>
         public float YawRate;
 
@@ -687,13 +835,14 @@ namespace LinearAlgebraDemos
             // out in proportion to how hard the axis is being commanded. Two damping terms live at
             // once would feel mushy and would make the brake read weaker than it is.
             //
-            // Only the ALONG-TRACK and YAW rates are damped. The rig has no lateral force, so sideways
-            // drift is structurally unreachable; pitch and roll are already regulated by the hover
-            // loop, and a second controller on those axes would fight it.
+            // The three BODY-RATE axes the driver owns — along-track, lateral and yaw — are damped.
+            // Pitch and roll are already regulated by the hover loop, and a second controller on those
+            // axes would fight it.
             float driveIn = math.clamp(DriveInput, -1f, 1f);
+            float strafeIn = math.clamp(StrafeInput, -1f, 1f);
             float steer = math.clamp(SteerInput, -1f, 1f);
 
-            float drive, yawDemand;
+            float drive, strafeDemand, yawDemand;
             if (BrakeInput)
             {
                 // Both gains ease off as the rate drops, so the brake settles instead of chattering at
@@ -701,6 +850,7 @@ namespace LinearAlgebraDemos
                 // stick's own authority, so braking can never out-demand ordinary driving and starve
                 // attitude control.
                 drive = -math.clamp(BrakeGain * ForwardSpeed, -BrakeForce, BrakeForce);
+                strafeDemand = -math.clamp(BrakeGain * LateralSpeed, -BrakeForce, BrakeForce);
                 yawDemand = -math.clamp(BrakeYawGain * YawRate, -SteerTorque, SteerTorque);
             }
             else
@@ -708,9 +858,11 @@ namespace LinearAlgebraDemos
                 // Idle damping is a D term on the demand, deliberately gentle: this is a hover vehicle
                 // and the glide is the point, so it settles over a second or two rather than stopping dead.
                 float linearDamp = -math.clamp(IdleLinearGain * ForwardSpeed, -DriveForce, DriveForce);
+                float lateralDamp = -math.clamp(IdleLinearGain * LateralSpeed, -StrafeForce, StrafeForce);
                 float yawDamp = -math.clamp(IdleAngularGain * YawRate, -SteerTorque, SteerTorque);
 
                 drive = driveIn * DriveForce + (1f - math.abs(driveIn)) * linearDamp;
+                strafeDemand = strafeIn * StrafeForce + (1f - math.abs(strafeIn)) * lateralDamp;
 
                 yawDemand = math.abs(steer) > StickDeadzone
                     ? steer * SteerTorque + (1f - math.abs(steer)) * yawDamp
@@ -722,6 +874,7 @@ namespace LinearAlgebraDemos
             // the hull and gravity is not; floored so a near-vertical hull cannot demand unbounded lift.
             var desired = new GimbalWrench
             {
+                Lateral = strafeDemand,
                 Lift = Mass * (Gravity / math.max(TiltCos, 0.35f) + uVertAccel),
                 Drive = drive,
                 Pitch = PitchInertia * uPitchAccel,
@@ -729,17 +882,17 @@ namespace LinearAlgebraDemos
                 Roll = RollInertia * uRollAccel,
             };
 
-            // ---- allocation: 8 controls onto the 5 reachable wrench components ----
+            // ---- allocation: 12 controls onto the 6 wrench components ----
             var z = new floatN(Controls);   // view, no copy
             GimbalRig rig = GimbalAllocation.BuildRig(in Settings, MountX, MountY, MountZ, Health,
                 in z, Dt, Mass * Gravity, MountArm);
             AllocOut[0] = GimbalAllocation.Solve(in rig, in desired, ref z, 0);
 
             GimbalWrench got = GimbalAllocation.Wrench(in rig, in z);
-            WrenchOut[0] = desired.Lift; WrenchOut[1] = desired.Drive; WrenchOut[2] = desired.Pitch;
-            WrenchOut[3] = desired.Yaw; WrenchOut[4] = desired.Roll;
-            WrenchOut[5] = got.Lift; WrenchOut[6] = got.Drive; WrenchOut[7] = got.Pitch;
-            WrenchOut[8] = got.Yaw; WrenchOut[9] = got.Roll;
+            WrenchOut[0] = desired.Lateral; WrenchOut[1] = desired.Lift; WrenchOut[2] = desired.Drive;
+            WrenchOut[3] = desired.Pitch; WrenchOut[4] = desired.Yaw; WrenchOut[5] = desired.Roll;
+            WrenchOut[6] = got.Lateral; WrenchOut[7] = got.Lift; WrenchOut[8] = got.Drive;
+            WrenchOut[9] = got.Pitch; WrenchOut[10] = got.Yaw; WrenchOut[11] = got.Roll;
         }
 
         /// <summary>
