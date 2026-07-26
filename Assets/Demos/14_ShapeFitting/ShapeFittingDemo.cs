@@ -33,6 +33,13 @@ namespace LinearAlgebraDemos
         [Range(0f, 0.8f)] public float outlierFraction = 0.35f;
         public bool animate = true;
 
+        [Header("Truth drift")]
+        [Tooltip("Drift the GENERATING shape over time. IRLS and LM are local solvers, so a slowly " +
+                 "moving target is where warm-starting from the previous frame earns its keep.")]
+        public bool driftTruth = true;
+        [Range(0f, 1f)] public float driftRate = 0.15f;
+        [Range(0f, 2f)] public float driftAmount = 0.8f;
+
         [Header("Fit")]
         public Model model = Model.Plane;
         public Solver solver = Solver.RansacLo;
@@ -91,8 +98,36 @@ namespace LinearAlgebraDemos
 
         // ---- cloud ---------------------------------------------------------------------------------
 
+        // Truth shape parameters for THIS frame. Hoisted out of the point loop deliberately: drifting
+        // per point would draw every sample from a slightly different shape, which is not a shape.
+        float3 truthCenter;
+        float3 truthAxis;
+        float truthR1, truthR2;
+
+        // Simplex noise rather than a sine: separate channels stay uncorrelated, so the shape wanders
+        // instead of pulsing in lockstep, and it is smooth, so the fit never sees a jump it would
+        // report as divergence.
+        // Fully qualified: this class has its own `noise` field (the sample jitter), which shadows
+        // Unity.Mathematics.noise.
+        static float Wobble(float t, int channel)
+            => Unity.Mathematics.noise.snoise(new float2(t, channel * 17.3f));
+
+        void UpdateTruth()
+        {
+            float t = driftTruth ? Time.time * driftRate : 0f;
+            float a = driftTruth ? driftAmount : 0f;
+
+            truthCenter = a * new float3(Wobble(t, 0), Wobble(t, 1), Wobble(t, 2));
+            truthAxis = math.normalize(new float3(1f, 0.5f, 0.3f)
+                                     + 0.4f * a * new float3(Wobble(t, 3), Wobble(t, 4), Wobble(t, 5)));
+            truthR1 = 3f + 0.5f * a * Wobble(t, 6);
+            truthR2 = 1f + 0.25f * a * Wobble(t, 7);
+        }
+
         void Generate()
         {
+            UpdateTruth();
+
             var rng = new Random(animate ? frame * 747796405u + 1u : 1u);
             int outliers = (int)(count * outlierFraction);
 
@@ -126,12 +161,13 @@ namespace LinearAlgebraDemos
                 case Truth.Circle:
                 {
                     float t = rng.NextFloat(0f, 2f * math.PI);
-                    return new float2(1f, -0.5f) + 3f * new float2(math.cos(t), math.sin(t));
+                    return new float2(1f, -0.5f) + truthCenter.xy
+                         + truthR1 * new float2(math.cos(t), math.sin(t));
                 }
                 default:
                 {
                     float s = rng.NextFloat(-5f, 5f);
-                    return new float2(1f, 0.5f) + s * math.normalize(new float2(1f, 0.6f));
+                    return new float2(1f, 0.5f) + truthCenter.xy + s * math.normalize(truthAxis.xy);
                 }
             }
         }
@@ -143,28 +179,34 @@ namespace LinearAlgebraDemos
                 case Truth.Sphere:
                 {
                     float3 d = rng.NextFloat3Direction();
-                    return new float3(0.5f, 0f, 0.5f) + 3f * d;
+                    return new float3(0.5f, 0f, 0.5f) + truthCenter + truthR1 * d;
                 }
                 case Truth.Cylinder:
                 {
                     float t = rng.NextFloat(0f, 2f * math.PI), z = rng.NextFloat(-3f, 3f);
-                    return new float3(2f * math.cos(t), 2f * math.sin(t), z);
+                    float r = 2f + (truthR1 - 3f);                // drift the radius, keep it near 2
+                    return truthCenter + new float3(r * math.cos(t), r * math.sin(t), z);
                 }
                 case Truth.Torus:
                 {
                     float a = rng.NextFloat(0f, 2f * math.PI), b = rng.NextFloat(0f, 2f * math.PI);
-                    float rr = 3f + 1f * math.cos(b);
-                    return new float3(rr * math.cos(a), rr * math.sin(a), math.sin(b));
+                    float rr = truthR1 + truthR2 * math.cos(b);
+                    return truthCenter
+                         + new float3(rr * math.cos(a), rr * math.sin(a), truthR2 * math.sin(b));
                 }
                 case Truth.Line:
                 {
                     float s = rng.NextFloat(-5f, 5f);
-                    return s * math.normalize(new float3(1f, 0.5f, 0.3f));
+                    return truthCenter + s * truthAxis;
                 }
-                default:                                          // plane
+                default:                                          // plane, tilted by the drifting axis
                 {
                     float2 uv = rng.NextFloat2(-5f, 5f);
-                    return new float3(uv.x, uv.y, 0f);
+                    float3 n = truthAxis;
+                    float3 u = math.normalize(math.cross(n, math.abs(n.x) < 0.9f
+                                                            ? new float3(1f, 0f, 0f)
+                                                            : new float3(0f, 0f, 1f)));
+                    return truthCenter + uv.x * u + uv.y * math.cross(n, u);
                 }
             }
         }
