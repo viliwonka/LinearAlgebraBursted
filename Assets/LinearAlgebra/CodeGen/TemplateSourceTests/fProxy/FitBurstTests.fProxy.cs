@@ -10,93 +10,95 @@ using fProxy2 = Unity.Mathematics.float2;
 using fProxy3 = Unity.Mathematics.float3;
 //-deleteThis
 
-// Does the Fit facade actually run under Burst?
+// Fit under Burst. A managed pass proves the math, not that the code is Burst-legal.
 //
-// Every other Fit test is a managed [Test], so until now nothing in the suite had ever compiled these
-// entry points through Burst at all -- in a Burst library that is a real gap, not a formality. A
-// managed-only pass proves the math and nothing about whether the code is Burst-legal: throwing
-// argument guards, NativeArray.Reinterpret, Allocator.Temp scratch and the struct-functor generics are
-// each capable of failing to compile while the managed build stays perfectly green.
+// One job with an enum switch (house pattern). That saves job scaffolding, not specializations --
+// Burst still compiles everything reachable from the switch.
 //
-// It also re-runs the whole fit inside the job and reads results back through a NativeArray, which is
-// the shape that caught the LOBPCG IJob struct-copy bug: a solver whose state is reseated by a swap
-// loses that reseat when Burst copies the job struct by value.
+// The shape x solver grid stays managed in FitShapeSolverTests; this Bursts representative
+// combinations only. Compiling the whole grid would cost build time for little extra signal.
 //
-// CompileSynchronously forces the compile to happen (and fail) here rather than silently falling back
-// to Mono, which would make this test pass while proving nothing.
-//
-// The clouds below are deliberately [ReadOnly] -- that is how a caller would idiomatically pass input
-// to a job, and it is a REGRESSION GUARD. This file first went red on exactly that: the geometric
-// entry points used to wrap the reinterpreted array in a MUTABLE fProxyMxN view, which trips the
-// safety system on a read-only array, aborting the job so every output stayed zero -- silently, with
-// no error reported. They now index the flat reinterpreted array directly, the way Fit.sphere always
-// did. Reinterpret itself preserves read-only-ness perfectly well; the mutable VIEW was the problem.
+// Clouds are [ReadOnly] as a regression guard: the geometric fits used to wrap the reinterpreted
+// array in a MUTABLE view, which aborts the job on a read-only array and silently zeroes the output.
 public class fProxyFitBurstTests
 {
-    [BurstCompile(CompileSynchronously = true)]
-    struct GeometryJob : IJob
-    {
-        [ReadOnly] public NativeArray<fProxy3> Points;
-        public NativeArray<fProxy> Out;          // 0..2 normal, 3 radius, 4 line dir x
-
-        public void Execute()
-        {
-            Fit.plane(Points, out fProxy3 c, out fProxy3 n);
-            Out[0] = n.x; Out[1] = n.y; Out[2] = n.z;
-
-            Fit.sphere(Points, out fProxy3 sc, out fProxy r);
-            Out[3] = r;
-
-            Fit.line(Points, out fProxy3 lc, out fProxy3 ld);
-            Out[4] = ld.x;
-        }
-    }
+    public enum Case { Geometry = 0, Robust = 1, Ransac = 2, Solid = 3, ShapeSolvers = 4 }
 
     [BurstCompile(CompileSynchronously = true)]
-    struct RobustJob : IJob
+    struct FitJob : IJob
     {
+        public Case Which;
         [ReadOnly] public NativeArray<fProxy3> Points;
         public NativeArray<fProxy> Out;
+        public NativeArray<int> Ints;
 
         public void Execute()
         {
-            var huber = new fProxyHuberLoss((fProxy)0.5);
-            Fit.plane(Points, in huber, out fProxy3 c, out fProxy3 n);
-            Out[0] = n.z;
+            switch (Which)
+            {
+                case Case.Geometry:
+                {
+                    Fit.plane(Points, out fProxy3 c, out fProxy3 n);
+                    Out[0] = n.x; Out[1] = n.y; Out[2] = n.z;
 
-            var l1 = new fProxyL1Loss((fProxy)1e-2);
-            Fit.line(Points, in l1, out fProxy3 lc, out fProxy3 ld);
-            Out[1] = math.length(ld);
-        }
-    }
+                    Fit.sphere(Points, out fProxy3 sc, out fProxy r);
+                    Out[3] = r;
 
-    [BurstCompile(CompileSynchronously = true)]
-    struct RansacJob : IJob
-    {
-        [ReadOnly] public NativeArray<fProxy3> Points;
-        public NativeArray<fProxy> Out;
-        public NativeArray<int> Inliers;
+                    Fit.line(Points, out fProxy3 lc, out fProxy3 ld);
+                    Out[4] = ld.x;
+                    break;
+                }
 
-        public void Execute()
-        {
-            var model = new Fit.fProxyPlane();
-            var info = Fit.ransac(Points, ref model, (fProxy)0.1, 40, 7u);
-            Out[0] = model.Normal.z;
-            Inliers[0] = info.inliers;
-        }
-    }
+                case Case.Robust:
+                {
+                    var huber = new fProxyHuberLoss((fProxy)0.5);
+                    Fit.plane(Points, in huber, out fProxy3 c, out fProxy3 n);
+                    Out[0] = n.z;
 
-    [BurstCompile(CompileSynchronously = true)]
-    struct SolidJob : IJob
-    {
-        [ReadOnly] public NativeArray<fProxy3> Points;
-        public NativeArray<fProxy> Out;
+                    var l1 = new fProxyL1Loss((fProxy)1e-2);
+                    Fit.line(Points, in l1, out fProxy3 lc, out fProxy3 ld);
+                    Out[1] = math.length(ld);
+                    break;
+                }
 
-        public void Execute()
-        {
-            fProxy3 q = default, d = default; fProxy rad = default;
-            Fit.cylinder(Points, ref q, ref d, ref rad);
-            Out[0] = rad;
+                case Case.Ransac:
+                {
+                    var model = new Fit.fProxyPlane();
+                    var info = Fit.ransac(Points, ref model, (fProxy)0.1, 40, 7u);
+                    Out[0] = model.Normal.z;
+                    Ints[0] = info.inliers;
+                    break;
+                }
+
+                case Case.Solid:
+                {
+                    fProxy3 q = default, d = default; fProxy rad = default;
+                    Fit.cylinder(Points, ref q, ref d, ref rad);
+                    Out[0] = rad;
+                    break;
+                }
+
+                // The new generic core: a shape through IRLS, and through both consensus variants.
+                // Every other test of these is managed, so without this the drivers are unverified
+                // under Burst -- and they are the pieces most likely to trip it, being generic over
+                // both the shape and the loss.
+                case Case.ShapeSolvers:
+                {
+                    var pl = new Fit.fProxyPlane();
+                    var l2 = new fProxyL2Loss();
+                    if (Fit.irls(Points, ref pl, in l2)) Out[0] = pl.Normal.z;
+
+                    var lo = new Fit.fProxyPlane();
+                    var loInfo = Fit.ransacLo(Points, ref lo, (fProxy)0.1, 30, 3u);
+                    Out[1] = lo.Normal.z;
+                    Ints[0] = loInfo.inliers;
+
+                    var mg = new Fit.fProxyPlane();
+                    Fit.magsac(Points, ref mg, (fProxy)0.3, 30, 4u);
+                    Out[2] = mg.Normal.z;
+                    break;
+                }
+            }
         }
     }
 
@@ -123,62 +125,75 @@ public class fProxyFitBurstTests
         return pts;
     }
 
+    static void RunCase(Case which, NativeArray<fProxy3> pts, int outN,
+                        out NativeArray<fProxy> outp, out NativeArray<int> ints)
+    {
+        outp = new NativeArray<fProxy>(outN, Allocator.TempJob);
+        ints = new NativeArray<int>(1, Allocator.TempJob);
+        new FitJob { Which = which, Points = pts, Out = outp, Ints = ints }.Run();
+    }
+
     [Test]
     public void GeometricFitsRunUnderBurst()
     {
         var pts = PlanarCloud();
-        var outp = new NativeArray<fProxy>(5, Allocator.TempJob);
-
-        new GeometryJob { Points = pts, Out = outp }.Run();
+        RunCase(Case.Geometry, pts, 5, out var outp, out var ints);
 
         Assert.That(math.abs((double)outp[2]), Is.EqualTo(1.0).Within(1e-3),
             "plane normal from inside a Burst job should be +-z");
         Assert.IsFalse(double.IsNaN((double)outp[3]), "sphere radius must be finite");
         Assert.IsFalse(double.IsNaN((double)outp[4]), "line direction must be finite");
 
-        pts.Dispose(); outp.Dispose();
+        pts.Dispose(); outp.Dispose(); ints.Dispose();
     }
 
     [Test]
     public void RobustFitsRunUnderBurst()
     {
         var pts = PlanarCloud();
-        var outp = new NativeArray<fProxy>(2, Allocator.TempJob);
-
-        new RobustJob { Points = pts, Out = outp }.Run();
+        RunCase(Case.Robust, pts, 2, out var outp, out var ints);
 
         Assert.That(math.abs((double)outp[0]), Is.EqualTo(1.0).Within(1e-3), "robust plane normal");
         Assert.That((double)outp[1], Is.EqualTo(1.0).Within(1e-3), "line direction must stay unit length");
 
-        pts.Dispose(); outp.Dispose();
+        pts.Dispose(); outp.Dispose(); ints.Dispose();
     }
 
     [Test]
     public void RansacRunsUnderBurst()
     {
         var pts = PlanarCloud();
-        var outp = new NativeArray<fProxy>(1, Allocator.TempJob);
-        var inl = new NativeArray<int>(1, Allocator.TempJob);
-
-        new RansacJob { Points = pts, Out = outp, Inliers = inl }.Run();
+        RunCase(Case.Ransac, pts, 1, out var outp, out var ints);
 
         Assert.That(math.abs((double)outp[0]), Is.EqualTo(1.0).Within(1e-3), "RANSAC plane normal");
-        Assert.AreEqual(25, inl[0], "every point of a clean planar cloud is an inlier");
+        Assert.AreEqual(25, ints[0], "every point of a clean planar cloud is an inlier");
 
-        pts.Dispose(); outp.Dispose(); inl.Dispose();
+        pts.Dispose(); outp.Dispose(); ints.Dispose();
     }
 
     [Test]
     public void NonlinearFitRunsUnderBurst()
     {
         var pts = CylinderCloud();
-        var outp = new NativeArray<fProxy>(1, Allocator.TempJob);
-
-        new SolidJob { Points = pts, Out = outp }.Run();
+        RunCase(Case.Solid, pts, 1, out var outp, out var ints);
 
         Assert.That((double)outp[0], Is.EqualTo(2.0).Within(1e-2),
             "cylinder radius recovered from inside a Burst job");
 
-        pts.Dispose(); outp.Dispose();
+        pts.Dispose(); outp.Dispose(); ints.Dispose();
+    }
+
+    [Test]
+    public void ShapeSolversRunUnderBurst()
+    {
+        var pts = PlanarCloud();
+        RunCase(Case.ShapeSolvers, pts, 3, out var outp, out var ints);
+
+        Assert.That(math.abs((double)outp[0]), Is.EqualTo(1.0).Within(1e-3), "irls plane normal");
+        Assert.That(math.abs((double)outp[1]), Is.EqualTo(1.0).Within(1e-3), "ransacLo plane normal");
+        Assert.That(math.abs((double)outp[2]), Is.EqualTo(1.0).Within(1e-3), "magsac plane normal");
+        Assert.AreEqual(25, ints[0], "clean cloud: every point an inlier under LO-RANSAC");
+
+        pts.Dispose(); outp.Dispose(); ints.Dispose();
     }
 }
