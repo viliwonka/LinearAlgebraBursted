@@ -56,8 +56,27 @@ between minor versions.
   the transpose — `dot(A, A, …, transposeB: true)` routes through a dedicated symmetric `A·Aᵀ`
   kernel. `Blas.dotSym` gains a `dotSymT` sibling for symmetric-by-construction `A·Bᵀ` products
   (upper triangle + mirror, ~2× and exactly symmetric output).
+- **Geometric fitting (`Fit`)**: shapes and solvers as independent pieces, combined freely. 13 shapes
+  (plane, line, sphere, cylinder, cone, torus, capsule, circle, ellipse, ellipsoid, in 2D and 3D)
+  across four solvers — `irls` (any robust loss), `ransac` / `ransacLo` / `magsac` (consensus), and
+  `nls` (Levenberg-Marquardt). A shape opts into the interfaces it can honestly satisfy, so adding
+  one is a single struct that immediately works with every solver it qualifies for.
+- `Fit.linear` (vertical residual) vs `Fit.total` (orthogonal / errors-in-variables), and
+  `Fit.conic` / `Fit.quadric` / `Fit.ellipsoid` algebraic fits with `Fit.classify`. `conic` and
+  `ellipsoid` are constrained so only an ellipse / ellipsoid can be returned.
+- `fProxyL1Loss` alongside Huber, Cauchy and Tukey.
+- **Shape sampling (`Fit.sample`)**: shapes of finite measure draw points uniformly from their own
+  surface — by area, or by arc length for a curve.
 
 ### Changed
+
+- **Triangular solves now report failure.** `Blas.triUpper` / `triLower` return
+  `DirectSolveStatus.Singular` on a zero, NaN or infinite diagonal, or a non-finite result, where
+  they previously always reported `Success`. `QR.solveInPlace` forwards it. An ill-conditioned but
+  usable factor still solves and still reports `Success`; rank-deficient systems still need the
+  rank-revealing paths (`QRCP`, `SVD.pinvSolve`, `CHOP`).
+- **Breaking — `Fit.quadric` requires 10 points, not 9.** Its design has one column per coefficient
+  and the SVD needs at least as many rows; a 9-point call previously threw from inside the solver.
 
 - **Breaking — the root namespace is now `BULA`** (was `LinearAlgebra`). Update `using LinearAlgebra;`
   → `using BULA;`, and the sub-namespaces likewise (`BULA.Sparse`, `BULA.Control`, `BULA.ML`,

@@ -573,12 +573,13 @@ namespace BULA
 
             pivot.ApplyInverseVec(ref b_to_x);
 
-            // Solve Ly = b
-            Blas.triLowerLU(ref LU, in pivot, ref b_to_x);
-            // Solve Ux = y
-            Blas.triUpperLU(ref LU, in pivot, ref b_to_x);
+            // Solve Ly = b, then Ux = y. The status is FORWARDED rather than hardcoded: this overload
+            // takes a factorization the caller computed elsewhere, so it cannot rely on the
+            // factorization's own zero-pivot detection to have run at all.
+            var lo = Blas.triLowerLU(ref LU, in pivot, ref b_to_x);
+            if (lo.status != DirectSolveStatus.Success) return lo;
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return Blas.triUpperLU(ref LU, in pivot, ref b_to_x);
         }
 
         /// <summary>
@@ -605,12 +606,11 @@ namespace BULA
 
             // Solver linear system LUx = b, b is overwritten with x
 
-            // Solve Ly = b
-            Blas.triLower(ref L, ref b_to_x);
-            // Solve Ux = y
-            Blas.triUpper(ref U, ref b_to_x);
+            // Status forwarded, not hardcoded -- see the pivoted overload.
+            var lo = Blas.triLower(ref L, ref b_to_x);
+            if (lo.status != DirectSolveStatus.Success) return lo;
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return Blas.triUpper(ref U, ref b_to_x);
         }
 
         /// <summary>

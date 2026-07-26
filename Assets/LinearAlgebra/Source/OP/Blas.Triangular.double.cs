@@ -66,10 +66,11 @@ namespace BULA
         }
 
         // Solve Lx = b for x
-        // PRECONDITION: L is non-singular — every diagonal L[r,r] must be nonzero (see
-        // triUpper; a zero diagonal divides by zero -> Inf/NaN, unguarded).
-        // Always reports DirectSolveStatus.Success — see triUpper.
-        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        // Reports DirectSolveStatus.Singular on a zero, NaN or +/-Inf diagonal, or a non-finite
+        // result — see triUpper, including why ill-conditioned-but-usable still reports Success.
+        // The check is n comparisons against the solve's own n²/2 multiply-adds, so it costs ~1/n.
+        /// <param name="b_to_x">On entry b; on exit the solution x — contents undefined unless the
+        /// returned status is Success.</param>
         public static unsafe DirectSolveInfo triLower(ref doubleMxN L, ref doubleN b_to_x)
         {
             if (L.IsSquare == false)
@@ -84,20 +85,32 @@ namespace BULA
             double* Lp = L.Data.Ptr;
             double* bp = b_to_x.Data.Ptr;
 
+            bool ok = true;
             for (int r = 0; r < n; r++)
             {
                 double* Lr = Lp + (long)r * stride;
+
+                if (!(math.abs(Lr[r]) > (double)0) || !math.isfinite(Lr[r])) { ok = false; break; }
+
                 double sum = UnsafeOP.vecDotRange(Lr, bp, 0, r);
                 bp[r] = (bp[r] - sum) / Lr[r];
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            for (int r = 0; r < n && ok; r++)
+                if (!math.isfinite(bp[r])) ok = false;
+
+            return new DirectSolveInfo {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // Solve Ly = b for, where y = Ux
         // RP = Row Pivot
-        // Always reports DirectSolveStatus.Success — see triUpper.
-        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        // The L of an LU has a UNIT diagonal, so this one never divides and cannot go singular that
+        // way; it still reports Singular on a non-finite result, which is reachable from non-finite
+        // input. See triUpper.
+        /// <param name="b_to_x">On entry b; on exit the solution x — contents undefined unless the
+        /// returned status is Success.</param>
         public static unsafe DirectSolveInfo triLowerLU(ref doubleMxN L, in Pivot RP, ref doubleN b_to_x) {
             if (L.IsSquare == false)
                 throw new ArgumentException("Blas.triLowerLU: Matrix must be square");
@@ -118,11 +131,19 @@ namespace BULA
                 bp[r] = bp[r] - sum;
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            bool ok = true;
+            for (int r = 0; r < n && ok; r++)
+                if (!math.isfinite(bp[r])) ok = false;
+
+            return new DirectSolveInfo {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
-        // Always reports DirectSolveStatus.Success — see triUpper.
-        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        // Reports DirectSolveStatus.Singular on a zero, NaN or infinite pivoted diagonal, or a
+        // non-finite result — see triUpper.
+        /// <param name="b_to_x">On entry b; on exit the solution x — contents undefined unless the
+        /// returned status is Success.</param>
         public static unsafe DirectSolveInfo triUpperLU(ref doubleMxN U, in Pivot RP, ref doubleN b_to_x) {
             if(U.IsSquare == false)
                 throw new ArgumentException("Blas.triUpperLU: Matrix must be square");
@@ -137,13 +158,22 @@ namespace BULA
             double* Up = U.Data.Ptr;
             double* bp = b_to_x.Data.Ptr;
 
+            bool ok = true;
             for (int r = n - 1; r >= 0; r--) {
                 double* Ur = Up + (long)RP[r] * stride;
+
+                if (!(math.abs(Ur[r]) > (double)0) || !math.isfinite(Ur[r])) { ok = false; break; }
+
                 double sum = UnsafeOP.vecDotRange(Ur, bp, r + 1, n);
                 bp[r] = (bp[r] - sum) / Ur[r];
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            for (int r = 0; r < n && ok; r++)
+                if (!math.isfinite(bp[r])) ok = false;
+
+            return new DirectSolveInfo {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // ---- multi-RHS (TRSM) forms: solve for a whole matrix of right-hand sides at once ----

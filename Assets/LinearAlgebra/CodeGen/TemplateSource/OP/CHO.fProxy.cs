@@ -185,9 +185,12 @@ namespace BULA
             if (b_to_x.N != L.M_Rows)
                 throw new ArgumentException("decompSolve: b_to_x.N must equal L.M_Rows");
 
-            // L y = b
-            Blas.triLower(ref L, ref b_to_x);
-            // Lᵀ x = y
+            // Status forwarded, not hardcoded: this overload takes an L the caller factored
+            // elsewhere, so the factorization's own not-positive-definite detection may never have
+            // run. A semi-definite matrix yields a zero on L's diagonal and would divide by it.
+            var lo = Blas.triLower(ref L, ref b_to_x);
+            if (lo.status != DirectSolveStatus.Success) return lo;
+
             SolveUpperTriangularTransposed(ref L, ref b_to_x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };

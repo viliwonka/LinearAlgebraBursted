@@ -34,6 +34,12 @@ public class fProxyAMGSolverTests
             FcgKCycleConverges,
             NearNullspaceOnesMatchesDefault,
             BlockNearNullspaceSolves,
+            BsrSolves,
+            BsrMatchesPrebuilt,
+            BsrKCycleOptions,
+            BsrDefaults,
+            BsrOptionsDefaults,
+            BsrNotPositiveDefinite,
         }
 
         public TestType Type;
@@ -83,6 +89,12 @@ public class fProxyAMGSolverTests
                 case TestType.FcgKCycleConverges:      FcgKCycleConverges(); break;
                 case TestType.NearNullspaceOnesMatchesDefault: NearNullspaceOnesMatchesDefault(); break;
                 case TestType.BlockNearNullspaceSolves:        BlockNearNullspaceSolves(); break;
+                case TestType.BsrSolves:               BsrSolves(); break;
+                case TestType.BsrMatchesPrebuilt:      BsrMatchesPrebuilt(); break;
+                case TestType.BsrKCycleOptions:        BsrKCycleOptions(); break;
+                case TestType.BsrDefaults:             BsrDefaults(); break;
+                case TestType.BsrOptionsDefaults:      BsrOptionsDefaults(); break;
+                case TestType.BsrNotPositiveDefinite:  BsrNotPositiveDefinite(); break;
             }
         }
 
@@ -435,6 +447,137 @@ public class fProxyAMGSolverTests
             Assert.IsTrue(info.status == IterativeSolveStatus.Converged);
             Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
         }
+
+        // The matrix-taking rung: hand MG.solve a BSR, it builds and disposes the hierarchy itself.
+        void BsrSolves()
+        {
+            var A = Poisson2D(16, 16, Allocator.Temp);
+            int n = A.M_Rows;
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xA31u);
+
+            var x = new fProxyN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+            var si = MG.solve(in A, out var setup, in b, ref x, 100, Tol());
+
+            Assert.IsTrue(setup.Solved);
+            Assert.IsTrue(setup.levels >= 2);
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
+        }
+
+        // The one-shot builds the SAME hierarchy the two-step route does (same options, same
+        // deterministic setup), so it must reproduce the prebuilt solve exactly.
+        void BsrMatchesPrebuilt()
+        {
+            var A = Poisson2D(16, 16, Allocator.Temp);
+            int n = A.M_Rows;
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0xB17u);
+
+            var amg = new fProxyAMG(in A, out var pre, Allocator.Temp);
+            Assert.IsTrue(pre.Solved);
+            var xPre = new fProxyN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++) xPre[i] = (fProxy)0;
+            var sPre = MG.solve(in amg, in b, ref xPre, 100, Tol());
+
+            var xOne = new fProxyN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++) xOne[i] = (fProxy)0;
+            var sOne = MG.solve(in A, out var setup, in b, ref xOne, 100, Tol());
+
+            Assert.IsTrue(sPre.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(sOne.status == sPre.status);
+            Assert.IsTrue(sOne.iterations == sPre.iterations);
+            Assert.IsTrue(setup.levels == pre.levels);
+            Assert.IsTrue(setup.coarseRows == pre.coarseRows);
+            for (int i = 0; i < n; i++) Assert.IsTrue(xOne[i] == xPre[i]);
+        }
+
+        // Explicit AMGOptions reach the internal build: a K-cycle one-shot solves.
+        void BsrKCycleOptions()
+        {
+            var A = Poisson2D(24, 24, Allocator.Temp);
+            int n = A.M_Rows;
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x4B01u);
+
+            var x = new fProxyN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+            var si = MG.solve(in A, KOpts(), out var setup, in b, ref x, 100, Tol());
+
+            Assert.IsTrue(setup.Solved);
+            Assert.IsTrue(setup.levels >= 2);
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
+        }
+
+        // Default maxIter/tol rung. n = 36 <= coarseMax(48) is a single-level hierarchy, so the cycle
+        // is a dense Cholesky solve that reaches any tolerance in exactly one cycle -- the rung is
+        // tested without betting on a V-cycle convergence RATE.
+        void BsrDefaults()
+        {
+            var A = Poisson2D(6, 6, Allocator.Temp);
+            int n = A.M_Rows;
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x0D15u);
+
+            var x = new fProxyN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+            var si = MG.solve(in A, out var setup, in b, ref x);
+
+            Assert.IsTrue(setup.Solved);
+            Assert.IsTrue(setup.levels == 1);
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(si.iterations == 1);
+            Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
+        }
+
+        // Explicit options + default maxIter/tol. n = 64 with coarseMax = 64 stops coarsening
+        // immediately (levels == 1), which the DEFAULT coarseMax of 48 would not -- so levels == 1 is
+        // proof the options were forwarded, and the single level again makes the solve exact.
+        void BsrOptionsDefaults()
+        {
+            var A = Poisson2D(8, 8, Allocator.Temp);
+            int n = A.M_Rows;
+            var opts = new AMGOptions { cycle = MGCycle.V, theta = 0, pre = 1, post = 1, coarseMax = 64, maxLevels = 20 };
+            var b = GenerateOP.fProxyRandomVec(n, -1f, 1f, 0x0D16u);
+
+            var x = new fProxyN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++) x[i] = (fProxy)0;
+            var si = MG.solve(in A, in opts, out var setup, in b, ref x);
+
+            Assert.IsTrue(setup.Solved);
+            Assert.IsTrue(setup.levels == 1);
+            Assert.IsTrue(setup.coarseRows == n);
+            Assert.IsTrue(si.status == IterativeSolveStatus.Converged);
+            Assert.IsTrue(si.iterations == 1);
+            Assert.IsTrue(fProxyKrylovBatteryOracles.RelResidualBSR(in A, in x, in b) <= Tol());
+        }
+
+        // An unusable build (coarsest not SPD) cannot be reported by a throw -- the caller would never
+        // get to read setup. The one-shot runs no cycle instead: Breakdown, 0 iterations, NaN rnorm,
+        // x untouched.
+        void BsrNotPositiveDefinite()
+        {
+            int nb = 4;
+            var bld = new fProxyBSRBuilder(nb, nb, 1, 1, Allocator.Temp, 3 * nb);
+            for (int i = 0; i < nb; i++)
+            {
+                bld.AddValue(i, i, i == 2 ? (fProxy)(-3) : (fProxy)2);   // symmetric indefinite chain
+                if (i > 0) bld.AddValue(i, i - 1, (fProxy)(-1));
+                if (i < nb - 1) bld.AddValue(i, i + 1, (fProxy)(-1));
+            }
+            var A = bld.ToBSR(Allocator.Temp);
+
+            var b = GenerateOP.fProxyRandomVec(nb, -1f, 1f, 0x0D17u);
+            var x = new fProxyN(nb, Allocator.Temp);
+            for (int i = 0; i < nb; i++) x[i] = (fProxy)7;
+
+            var si = MG.solve(in A, out var setup, in b, ref x, 10, Tol());
+
+            Assert.IsTrue(!setup.Solved);
+            Assert.IsTrue(setup.status == DirectSolveStatus.NotPositiveDefinite);
+            Assert.IsTrue(si.status == IterativeSolveStatus.Breakdown);
+            Assert.IsTrue(si.iterations == 0);
+            Assert.IsTrue(math.isnan(si.rnorm));
+            for (int i = 0; i < nb; i++) Assert.IsTrue(x[i] == (fProxy)7);
+        }
     }
 
     [Test] public void VCycleSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.VCycleSolves }.Run();
@@ -455,6 +598,12 @@ public class fProxyAMGSolverTests
     [Test] public void FcgKCycleConvergesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.FcgKCycleConverges }.Run();
     [Test] public void NearNullspaceOnesMatchesDefaultTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.NearNullspaceOnesMatchesDefault }.Run();
     [Test] public void BlockNearNullspaceSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.BlockNearNullspaceSolves }.Run();
+    [Test] public void BsrSolvesTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.BsrSolves }.Run();
+    [Test] public void BsrMatchesPrebuiltTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.BsrMatchesPrebuilt }.Run();
+    [Test] public void BsrKCycleOptionsTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.BsrKCycleOptions }.Run();
+    [Test] public void BsrDefaultsTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.BsrDefaults }.Run();
+    [Test] public void BsrOptionsDefaultsTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.BsrOptionsDefaults }.Run();
+    [Test] public void BsrNotPositiveDefiniteTest() => new AMGSolverTestJob { Type = AMGSolverTestJob.TestType.BsrNotPositiveDefinite }.Run();
 
     // Managed-thread reject: an AMG preconditioner that is not a fixed SPD operator (asymmetric
     // V-cycle here; a K-cycle likewise) is rejected by Krylov.cg — the preconditioner constructs

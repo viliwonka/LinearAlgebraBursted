@@ -2,6 +2,31 @@
 
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## MG.solve -- matrix-taking (one-shot) rung
+- 2026-07-26 | Closed the standing gap "AMG is the only solver you cannot hand a matrix": added four
+  `MG.solve(in fProxyBSR A, ...)` overloads that build the hierarchy from Allocator.Temp, solve, and
+  Dispose it. Ladder = the cross of the two axes the two parent ladders already have: the ctor's
+  {explicit AMGOptions, AMGOptions.Default} x MG.solve's {explicit maxIter/tol, defaults 50 /
+  fProxySqrtEps}. Argument order follows `Krylov.cg(in A, in M, in b, ref x, maxIter, tol)` — the
+  build-side args (opts, setup) sit between A and b, which also reproduces the ctor's
+  `(in A, in opts, out info, ...)` prefix.
+  `out AMGSetupInfo setup` is on EVERY rung, not a rung axis of its own: all four `fProxyAMG`
+  constructors carry it, and a one-shot absorbs a constructor — without it the levels/coarseRows/
+  status of the internal build are unrecoverable. Callers who don't want it write `out _`.
+  A failed build (coarsest not SPD) is NOT forwarded to `fProxyAMG.Solve`, which throws on an unusable
+  hierarchy — throwing would make the `out setup` useless (the caller can't inspect it before the
+  call it came from). Returns Breakdown/iterations=0/rnorm=NaN instead, with x untouched; Solve itself
+  only ever returns Converged or MaxIterations, so Breakdown out of `MG.solve` unambiguously means
+  "the hierarchy build failed".
+  Disposal is try/finally (Burst rejects `catch`, not `finally` — same shape as BuildStandalone);
+  under Burst the finally degrades to a no-op on the throw path, as everywhere else here.
+  NOT added: a `Bnear` (near-nullspace) axis. It would double the ladder to 8, and a caller who has
+  rigid-body modes to feed the setup is by definition doing a setup-heavy solve worth keeping the
+  hierarchy for. Two-step route unchanged for that case.
+  Codegen: `MG` has no per-type token, so its float and double halves merge into ONE class — safe
+  here because `fProxyBSR`/`fProxyN`/`fProxy` all appear in the PARAMETER lists (a member with fProxy
+  only in the return type would be a CS0111 collision).
+
 ## fProxyAMG.cs -- silent-resize footgun sweep
 - 2026-07-19 | All `.Data.CopyFrom(` sites in `VCycle`/`KCycle`/`ApplyCycleFromZero`/`Solve` switched
   to the length-checked `fProxyN.CopyFrom(in Self)` wrapper (fProxy/DEVLOG.md). Every pair here is a
