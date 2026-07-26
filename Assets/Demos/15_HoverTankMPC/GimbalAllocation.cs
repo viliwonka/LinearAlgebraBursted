@@ -84,10 +84,64 @@ namespace LinearAlgebraDemos
     }
 
     /// <summary>
+    /// Cheeseman-Bennett rotor ground effect: a nozzle close to the ground pushes against its own
+    /// reflected downwash and delivers MORE thrust than was commanded,
+    ///
+    ///     T_effective = T_commanded / (1 - (R / 4z)²)
+    ///
+    /// for effective nozzle radius R and nozzle height above ground z. Evaluated PER NOZZLE, so a
+    /// tilted hull is augmented differently at each corner.
+    /// </summary>
+    public static class GroundEffect
+    {
+        /// <summary>
+        /// Largest augmentation <see cref="Factor(float, float)"/> may report.
+        ///
+        /// The correlation is a fit to measured rotor data down to roughly z = R/2, where it reads
+        /// 1.33; below that it is extrapolation running into a pole at z = R/4, and it is negative
+        /// underneath. 1.5 is reached at z = 0.433·R, just under where the curve stops being data, so
+        /// the clamp takes over exactly where the model does. It is also the bound on how far the rest
+        /// of the loop is asked to move in one operating point: lift authority, the hover model's
+        /// vertical input column and the throttle needed to carry the hull all change by at most half.
+        /// </summary>
+        public const float MaxFactor = 1.5f;
+
+        /// <summary>
+        /// Nozzle height at which the model reaches <see cref="MaxFactor"/>, metres. The factor is
+        /// held there for anything lower.
+        /// </summary>
+        public static float ClampHeight(float radius) => radius / (4f * math.sqrt(1f - 1f / MaxFactor));
+
+        /// <summary>
+        /// Thrust multiplier for a nozzle of effective radius <paramref name="radius"/> whose exit
+        /// plane is <paramref name="height"/> metres above the ground. Always finite and in
+        /// [1, <see cref="MaxFactor"/>]: a radius of zero or less disables the effect and returns 1,
+        /// and any height at or below <see cref="ClampHeight"/> — including a nozzle at, or under, the
+        /// surface — returns <see cref="MaxFactor"/>, so the pole is never evaluated.
+        /// </summary>
+        public static float Factor(float height, float radius)
+        {
+            if (radius <= 0f) return 1f;
+            float t = radius / (4f * math.max(height, ClampHeight(radius)));
+            // The height clamp is what keeps the pole out of reach; the min only holds the stated
+            // range exactly against the rounding of ClampHeight's own square root.
+            return math.min(1f / (1f - t * t), MaxFactor);
+        }
+
+        /// <summary>Per-nozzle <see cref="Factor(float, float)"/> for all four heights at once.</summary>
+        public static float4 Factor(float4 height, float radius)
+        {
+            if (radius <= 0f) return new float4(1f);
+            float4 t = radius / (4f * math.max(height, new float4(ClampHeight(radius))));
+            return math.min(1f / (1f - t * t), new float4(MaxFactor));
+        }
+    }
+
+    /// <summary>
     /// One step's view of the four-thruster rig. Component i of every float4 belongs to thruster i.
     ///
     /// Thruster i sits at hull-local (MountX, MountY, MountZ)[i], measured from the CENTER OF MASS,
-    /// and produces force Health[i] · throttle[i] · MaxThrust ·
+    /// and produces force Health[i] · GroundGain[i] · throttle[i] · MaxThrust ·
     /// <see cref="GimbalAllocation.ForceDirection"/>(pitch[i], yaw[i]). Both angles are zero when the
     /// nozzle points straight down and the thrust straight up.
     ///
@@ -105,6 +159,14 @@ namespace LinearAlgebraDemos
 
         /// <summary>Per-thruster effectiveness in [0, 1]. 0 is a dead thruster.</summary>
         public float4 Health;
+
+        /// <summary>
+        /// Per-thruster thrust multiplier at this step's operating point — the
+        /// <see cref="GroundEffect.Factor(float, float)"/> of that nozzle's own height above the
+        /// ground. 1 is out of ground effect. This is what the allocation sizes throttles against, so
+        /// it must be the SAME number the applied force is scaled by.
+        /// </summary>
+        public float4 GroundGain;
 
         /// <summary>Absolute gimbal travel, radians. Shared by both axes of every nozzle.</summary>
         public float4 AngleLo, AngleHi;
@@ -124,7 +186,10 @@ namespace LinearAlgebraDemos
         /// <summary>Thrust at throttle 1, newtons.</summary>
         public float MaxThrust;
 
-        /// <summary>Throttle the trim weight pulls toward — the even share across live thrusters.</summary>
+        /// <summary>
+        /// Throttle the trim weight pulls toward — the even share across live thrusters, weighted by
+        /// what each of them actually delivers (<see cref="GroundGain"/>).
+        /// </summary>
         public float TrimThrottle;
 
         /// <summary>Newtons and newton-metres that count as a wrench residual of 1.</summary>
@@ -215,12 +280,13 @@ namespace LinearAlgebraDemos
         /// </summary>
         public static GimbalWrench Wrench(in GimbalRig rig, in floatN z)
         {
-            float4 mx = rig.MountX, my = rig.MountY, mz = rig.MountZ, health = rig.Health;
+            float4 mx = rig.MountX, my = rig.MountY, mz = rig.MountZ;
+            float4 health = rig.Health, gain = rig.GroundGain;
 
             var w = new GimbalWrench();
             for (int i = 0; i < Thrusters; i++)
             {
-                float q = health[i] * z[2 * Thrusters + i] * rig.MaxThrust;
+                float q = health[i] * gain[i] * z[2 * Thrusters + i] * rig.MaxThrust;
                 float3 f = q * ForceDirection(z[i], z[Thrusters + i]);
                 float3 t = math.cross(new float3(mx[i], my[i], mz[i]), f);
 
@@ -237,7 +303,8 @@ namespace LinearAlgebraDemos
         /// </summary>
         public static void ScaledJacobian(in GimbalRig rig, in floatN z, ref floatMxN A)
         {
-            float4 mx = rig.MountX, my = rig.MountY, mz = rig.MountZ, health = rig.Health;
+            float4 mx = rig.MountX, my = rig.MountY, mz = rig.MountZ;
+            float4 health = rig.Health, gain = rig.GroundGain;
             float invF = 1f / rig.ForceScale, invT = 1f / rig.TorqueScale;
 
             for (int i = 0; i < Thrusters; i++)
@@ -247,7 +314,7 @@ namespace LinearAlgebraDemos
                 math.sincos(z[colY], out float sy, out float cy);
 
                 float3 r = new float3(mx[i], my[i], mz[i]);
-                float g = health[i] * rig.MaxThrust;   // d|F| / d throttle
+                float g = health[i] * gain[i] * rig.MaxThrust;   // d|F| / d throttle
                 float q = g * z[colU];                 // |F| now
 
                 // Direction derivatives of (sy·cp, cy·cp, sp). The yaw column's cos(pitch) factor is
@@ -287,10 +354,11 @@ namespace LinearAlgebraDemos
         /// that <paramref name="z"/> and <paramref name="dt"/> leave. A dead thruster's throttle range
         /// collapses to idle, so it spools down at the power slew rate instead of snapping off.
         /// <paramref name="weight"/> is the hull's weight in newtons and <paramref name="arm"/> the
-        /// lever arm that turns it into the torque scale.
+        /// lever arm that turns it into the torque scale. <paramref name="groundGain"/> is
+        /// <see cref="GimbalRig.GroundGain"/>; pass 1 for a rig out of ground effect.
         /// </summary>
         public static GimbalRig BuildRig(in GimbalSettings s,
-            float4 mountX, float4 mountY, float4 mountZ, float4 health,
+            float4 mountX, float4 mountY, float4 mountZ, float4 health, float4 groundGain,
             in floatN z, float dt, float weight, float arm)
         {
             float maxThrust = math.max(s.maxThrust, 1f);
@@ -300,7 +368,10 @@ namespace LinearAlgebraDemos
             float thrLo = math.saturate(math.min(s.minThrust, maxThrust) / maxThrust);
             float angRate = math.radians(s.servoRateDeg) * dt;
             float thrRate = (s.thrustRate / maxThrust) * dt;
-            float live = math.max(math.csum(health), 1f);
+            // Lift the whole rig can raise per unit throttle, in units of one nominal thruster: what
+            // the trim target has to be measured against, so the regularizer does not pull the
+            // throttles back toward an out-of-ground-effect share the rig no longer needs.
+            float live = math.max(math.csum(health * groundGain), 1f);
 
             var rig = new GimbalRig
             {
@@ -308,6 +379,7 @@ namespace LinearAlgebraDemos
                 MountY = mountY,
                 MountZ = mountZ,
                 Health = health,
+                GroundGain = groundGain,
                 MaxThrust = maxThrust,
                 ForceScale = weight,
                 TorqueScale = weight * arm,

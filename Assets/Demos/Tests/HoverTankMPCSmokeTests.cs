@@ -9,11 +9,12 @@ using Unity.Mathematics;
 namespace LinearAlgebraDemos.Tests
 {
     /// <summary>
-    /// Headless smoke tests for <see cref="HoverTankMPCDemo"/>. Four things are assertable without
-    /// a scene: the shape contract of <see cref="TerrainField"/>, the stability of the hover model
-    /// <see cref="HoverTankMPCStepJob.BuildHoverModel"/> builds, the demo's own step job run against
-    /// synthetic corner ranges, and the 6x12 <see cref="GimbalAllocation"/> driven on its own.
-    /// Nothing here touches Physics, Rigidbody or raycasts.
+    /// Headless smoke tests for <see cref="HoverTankMPCDemo"/>. What is assertable without a scene:
+    /// the shape contract of <see cref="TerrainField"/>, the <see cref="GroundEffect"/> curve and its
+    /// clamp, the stability of the hover model <see cref="HoverTankMPCStepJob.BuildHoverModel"/>
+    /// builds, the demo's own step job run against synthetic corner ranges, and the 6x12
+    /// <see cref="GimbalAllocation"/> driven on its own. Nothing here touches Physics, Rigidbody or
+    /// raycasts.
     ///
     /// Every job is run rather than merely referenced: running a [BurstCompile] job is what forces
     /// Burst to compile it, and a compile failure inside the demo's control path is exactly the kind
@@ -62,7 +63,7 @@ namespace LinearAlgebraDemos.Tests
             const int n = 6, m = 3;
 
             HoverTankMPCStepJob.BuildHoverModel(
-                1f / 60f,
+                1f / 60f, 1f,
                 40f, 6f, 90f, 8f, 0.02f, 0.4f,
                 Allocator.TempJob, out var A, out var B, out var Q, out var R);
 
@@ -137,6 +138,7 @@ namespace LinearAlgebraDemos.Tests
             var controls = new NativeArray<float>(GimbalAllocation.ControlCount, Allocator.TempJob);
             var allocOut = new NativeArray<QPInfo>(1, Allocator.TempJob);
             var wrenchOut = new NativeArray<float>(2 * GimbalAllocation.WrenchRows, Allocator.TempJob);
+            var groundOut = new NativeArray<float>(GimbalAllocation.Thrusters, Allocator.TempJob);
             var hoverK = new floatMxN(3, 6, Allocator.TempJob);
             var hoverLqr = new floatLQRState(6, Allocator.TempJob);
 
@@ -172,6 +174,8 @@ namespace LinearAlgebraDemos.Tests
                 BrakeInput = false, BrakeForce = 8000f, BrakeGain = 3000f, BrakeYawGain = 12000f,
                 IdleLinearGain = 1500f, IdleAngularGain = 6500f,
                 ForwardSpeed = 0f, LateralSpeed = 0f, YawRate = 0f, TiltCos = 1f,
+                // Radius 0 turns ground effect off, so this stays a test of the nominal rig.
+                NozzleHeights = new float4(rideHeight), NozzleRadius = 0f, GroundOut = groundOut,
             };
 
             var before = new float[GimbalAllocation.ControlCount];
@@ -223,7 +227,7 @@ namespace LinearAlgebraDemos.Tests
 
             cornerHeights.Dispose(); prevCorner.Dispose();
             hoverState.Dispose(); hoverOut.Dispose();
-            controls.Dispose(); allocOut.Dispose(); wrenchOut.Dispose();
+            controls.Dispose(); allocOut.Dispose(); wrenchOut.Dispose(); groundOut.Dispose();
             hoverK.Dispose(); job.HoverLqrState.Dispose();
         }
 
@@ -323,6 +327,118 @@ namespace LinearAlgebraDemos.Tests
                 $"bottom-mounted rig should have to split its pitch servos, got {math.degrees(PitchServoSplit(below.Controls))} deg");
         }
 
+        /// <summary>
+        /// The augmentation curve itself, against the two figures the Cheeseman-Bennett model is
+        /// published with, and against its own clamp.
+        ///
+        /// The clamp is the load-bearing part: the model has a POLE at z = R/4 and is NEGATIVE
+        /// underneath, so an unguarded evaluation on the deck would not merely be inaccurate, it would
+        /// reverse the sign of every thrust command. The sweep runs from below the surface upward and
+        /// asserts the result stays finite, inside [1, MaxFactor], and never rises with height.
+        /// </summary>
+        [Test]
+        public void GroundEffect_MatchesModel_AndClampsThroughZero()
+        {
+            const float R = 2f;
+
+            var stats = new NativeArray<float>(13, Allocator.TempJob);
+            var job = new GroundEffectSampleJob { Out = stats, Radius = R, ZLo = -2f, ZHi = 40f, Step = 0.002f };
+            IJobExtensions.RunByRef(ref job);
+
+            float fR = stats[0], fHalfR = stats[1], fZero = stats[2], fNeg = stats[3], fTiny = stats[4];
+            float fFar = stats[5], maxF = stats[6], minF = stats[7];
+            bool neverRises = stats[8] == 1f, finite = stats[9] == 1f;
+            float vecGap = stats[10], rawDev = stats[11], noRadius = stats[12];
+            stats.Dispose();
+
+            // 1 / (1 - (R/4z)^2) is 16/15 at z = R and 4/3 at z = R/2.
+            Assert.IsTrue(math.abs(fR - 16f / 15f) < 1e-6f,
+                $"factor at z = R is {fR}, the model says {16f / 15f}");
+            Assert.IsTrue(math.abs(fHalfR - 4f / 3f) < 1e-6f,
+                $"factor at z = R/2 is {fHalfR}, the model says {4f / 3f}");
+
+            // The pole is never reached, from any height, including under the surface.
+            Assert.IsTrue(finite, "the sweep produced a non-finite factor");
+            Assert.IsTrue(math.abs(fZero - GroundEffect.MaxFactor) < 1e-6f,
+                $"factor at z = 0 is {fZero}, the clamp is {GroundEffect.MaxFactor}");
+            Assert.IsTrue(math.abs(fTiny - GroundEffect.MaxFactor) < 1e-6f,
+                $"factor just above z = 0 is {fTiny}, the clamp is {GroundEffect.MaxFactor}");
+            Assert.IsTrue(math.abs(fNeg - GroundEffect.MaxFactor) < 1e-6f,
+                $"factor below the surface is {fNeg}, the clamp is {GroundEffect.MaxFactor}");
+
+            Assert.IsTrue(maxF <= GroundEffect.MaxFactor,
+                $"the sweep reached {maxF}, above the clamp {GroundEffect.MaxFactor}");
+            Assert.IsTrue(minF >= 1f,
+                $"the sweep reached {minF}, below the out-of-ground-effect floor of 1");
+
+            // A nozzle is only ever helped by the ground, more so the closer it is, and forgets it far away.
+            Assert.IsTrue(neverRises, "the factor rises with nozzle height somewhere in the sweep");
+            Assert.IsTrue(fFar > 1f && fFar < 1.0001f,
+                $"factor 200 radii up is {fFar}, which should have decayed to 1");
+
+            // Well clear of the clamp the guards must not be shaping the curve at all.
+            Assert.IsTrue(rawDev < 1e-6f,
+                $"the clamped factor deviates from the bare model by {rawDev} above the clamp height");
+            Assert.IsTrue(vecGap == 0f,
+                $"the float4 overload disagrees with the scalar one by {vecGap}");
+            Assert.IsTrue(noRadius == 1f,
+                $"a zero radius should disable the effect entirely, got {noRadius}");
+        }
+
+        /// <summary>
+        /// The defining property: the thrust needed to hover DROPS as the tank comes down. The
+        /// allocation is handed the true per-nozzle gains, so the lift it delivers is unchanged — what
+        /// changes is the throttle it takes to deliver it, in inverse proportion to the augmentation.
+        ///
+        /// Then the same demand with the FRONT pair on the deck and the rear pair nearly clear, which a
+        /// hull-averaged model would answer with four equal throttles. Mounts at hull mid-height make
+        /// the pitch row read -Σ z·Fy, so a pure-lift demand pins each pair at half the weight and the
+        /// front pair has to buy its half at a lower throttle.
+        /// </summary>
+        [Test]
+        public void Allocation_GroundEffect_LowersHoverThrottle_PerNozzle()
+        {
+            const float R = 2f;
+            float gHigh = GroundEffect.Factor(2.8f, R);   // nozzle well clear of the ground
+            float gLow = GroundEffect.Factor(0.4f, R);    // nozzle on the deck, hard against the clamp
+            Assert.IsTrue(gLow > gHigh, $"test setup: {gLow} is not more augmented than {gHigh}");
+
+            var desired = new GimbalWrench { Lift = AllocWeight };
+
+            AllocResult high = RunAllocation(in desired, new float4(1f), new float4(gHigh), 0f);
+            AllocResult low = RunAllocation(in desired, new float4(1f), new float4(gLow), 0f);
+
+            Assert.IsTrue(high.Info.status == QPStatus.Optimal, $"allocation QP returned {high.Info.status}");
+            Assert.IsTrue(low.Info.status == QPStatus.Optimal, $"allocation QP returned {low.Info.status}");
+
+            // Same hull and same weight: what the rig delivers cannot depend on how cheaply it delivers it.
+            Assert.IsTrue(math.abs(high.Achieved[1] - AllocWeight) < 0.01f * AllocWeight,
+                $"hovering high, lift {high.Achieved[1]} N does not carry the hull's {AllocWeight} N");
+            Assert.IsTrue(math.abs(low.Achieved[1] - AllocWeight) < 0.01f * AllocWeight,
+                $"hovering low, lift {low.Achieved[1]} N does not carry the hull's {AllocWeight} N");
+
+            float thHigh = MeanThrottle(high.Controls), thLow = MeanThrottle(low.Controls);
+            Assert.IsTrue(thLow < thHigh,
+                $"hovering low took {thLow} throttle against {thHigh} high — ground effect is not reaching the allocation");
+            Assert.IsTrue(math.abs(thLow / thHigh - gHigh / gLow) < 1e-3f,
+                $"throttle ratio {thLow / thHigh} does not match the inverse augmentation ratio {gHigh / gLow}");
+
+            // ---- per nozzle, not per hull ----
+            AllocResult tilt = RunAllocation(in desired, new float4(1f),
+                                             new float4(gLow, gLow, gHigh, gHigh), 0f);
+            Assert.IsTrue(tilt.Info.status == QPStatus.Optimal, $"allocation QP returned {tilt.Info.status}");
+            Assert.IsTrue(math.abs(tilt.Achieved[1] - AllocWeight) < 0.01f * AllocWeight,
+                $"asymmetric hover lift {tilt.Achieved[1]} N does not carry the hull's {AllocWeight} N");
+            Assert.IsTrue(math.abs(tilt.Achieved[3]) < 0.02f * AllocTorqueScale,
+                $"asymmetric augmentation pitched the hull by {tilt.Achieved[3]} Nm (scale {AllocTorqueScale} Nm)");
+
+            float front = PairThrottle(tilt.Controls, true), rear = PairThrottle(tilt.Controls, false);
+            Assert.IsTrue(front < rear,
+                $"the augmented front pair runs at {front} against the rear's {rear} — the gain is being averaged across the hull");
+            Assert.IsTrue(math.abs(front / rear - gHigh / gLow) < 1e-2f,
+                $"front/rear throttle ratio {front / rear} does not match the inverse augmentation ratio {gHigh / gLow}");
+        }
+
         // ---- allocation test rig ----
 
         const float AllocMass = 1500f, AllocGravity = 9.81f;
@@ -353,6 +469,13 @@ namespace LinearAlgebraDemos.Tests
         /// carry the hull. <paramref name="mountY"/> is the mount height above the center of mass.
         /// </summary>
         static AllocResult RunAllocation(in GimbalWrench desired, float4 health, float mountY)
+            => RunAllocation(in desired, health, new float4(1f), mountY);
+
+        /// <summary>
+        /// As above, with an explicit per-thruster ground-effect gain.
+        /// <paramref name="groundGain"/> of 1 is out of ground effect.
+        /// </summary>
+        static AllocResult RunAllocation(in GimbalWrench desired, float4 health, float4 groundGain, float mountY)
         {
             GimbalSettings settings = GimbalSettings.Default;
 
@@ -367,7 +490,7 @@ namespace LinearAlgebraDemos.Tests
             var job = new GimbalAllocationJob
             {
                 Controls = controls, Out = readout, Info = info,
-                Settings = settings, Desired = desired, Health = health,
+                Settings = settings, Desired = desired, Health = health, GroundGain = groundGain,
                 MountX = new float4(-AllocHalfWidth, AllocHalfWidth, -AllocHalfWidth, AllocHalfWidth),
                 MountY = new float4(mountY),
                 MountZ = new float4(AllocHalfLength, AllocHalfLength, -AllocHalfLength, -AllocHalfLength),
@@ -388,6 +511,13 @@ namespace LinearAlgebraDemos.Tests
             controls.Dispose(); readout.Dispose(); info.Dispose();
             return r;
         }
+
+        /// <summary>Mean throttle across the four thrusters of a converged control vector.</summary>
+        static float MeanThrottle(float[] z) => 0.25f * (z[8] + z[9] + z[10] + z[11]);
+
+        /// <summary>Mean throttle of the front (FL, FR) or rear (BL, BR) pair.</summary>
+        static float PairThrottle(float[] z, bool front)
+            => front ? 0.5f * (z[8] + z[9]) : 0.5f * (z[10] + z[11]);
 
         /// <summary>How far the front pair's mean pitch servo angle sits from the rear pair's, radians.</summary>
         static float PitchServoSplit(float[] z)
@@ -430,7 +560,7 @@ namespace LinearAlgebraDemos.Tests
 
         public GimbalSettings Settings;
         public GimbalWrench Desired;
-        public float4 Health, MountX, MountY, MountZ;
+        public float4 Health, GroundGain, MountX, MountY, MountZ;
         public float MountArm, Weight, Dt;
 
         /// <summary>Fixed steps to run. At least 1: the rig is rebuilt around the controls each step.</summary>
@@ -440,12 +570,12 @@ namespace LinearAlgebraDemos.Tests
         {
             var z = new floatN(Controls);   // view, no copy
 
-            GimbalRig rig = GimbalAllocation.BuildRig(in Settings, MountX, MountY, MountZ, Health,
+            GimbalRig rig = GimbalAllocation.BuildRig(in Settings, MountX, MountY, MountZ, Health, GroundGain,
                                                      in z, Dt, Weight, MountArm);
             for (int s = 0; s < Steps; s++)
             {
                 Info[0] = GimbalAllocation.Solve(in rig, in Desired, ref z, 0);
-                rig = GimbalAllocation.BuildRig(in Settings, MountX, MountY, MountZ, Health,
+                rig = GimbalAllocation.BuildRig(in Settings, MountX, MountY, MountZ, Health, GroundGain,
                                                 in z, Dt, Weight, MountArm);
             }
 
@@ -468,6 +598,75 @@ namespace LinearAlgebraDemos.Tests
             Out[8] = eig ? 1f : 0f;
 
             ev.Dispose(); Q.Dispose(); J.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Sweeps <see cref="GroundEffect.Factor(float, float)"/> over nozzle heights and reduces it to the
+    /// numbers the model's contract is stated in. Out is
+    /// [f(R), f(R/2), f(0), f(-1), f(1e-9), f(200R), max over the sweep, min over the sweep, 1 if the
+    /// sweep never rises with height, 1 if every sample is finite, max gap between the float4 overload
+    /// and the scalar one, max relative deviation from the bare formula above the clamp height,
+    /// f(R/2) at radius 0].
+    /// </summary>
+    [BurstCompile(CompileSynchronously = true)]
+    public struct GroundEffectSampleJob : IJob
+    {
+        public NativeArray<float> Out;
+
+        /// <summary>Effective nozzle radius the sweep is run at, metres.</summary>
+        public float Radius;
+
+        /// <summary>Lowest and highest sampled nozzle height, metres, and the sample spacing.</summary>
+        public float ZLo, ZHi, Step;
+
+        public void Execute()
+        {
+            float r = Radius;
+            Out[0] = GroundEffect.Factor(r, r);
+            Out[1] = GroundEffect.Factor(0.5f * r, r);
+            Out[2] = GroundEffect.Factor(0f, r);
+            Out[3] = GroundEffect.Factor(-1f, r);
+            Out[4] = GroundEffect.Factor(1e-9f, r);
+            Out[5] = GroundEffect.Factor(200f * r, r);
+
+            float clamp = GroundEffect.ClampHeight(r);
+            int n = (int)((ZHi - ZLo) / Step);
+
+            float maxF = float.MinValue, minF = float.MaxValue, prev = float.MaxValue;
+            float maxVecGap = 0f, maxRawDev = 0f;
+            bool neverRises = true, finite = true;
+
+            for (int i = 0; i <= n; i++)
+            {
+                float z = ZLo + i * Step;
+                float f = GroundEffect.Factor(z, r);
+
+                finite &= math.isfinite(f);
+                maxF = math.max(maxF, f);
+                minF = math.min(minF, f);
+
+                // Two neighbouring samples can tie once the curve flattens; a RISE is the failure.
+                neverRises &= f <= prev + 1e-7f;
+                prev = f;
+
+                maxVecGap = math.max(maxVecGap, math.cmax(math.abs(GroundEffect.Factor(new float4(z), r) - f)));
+
+                // Clear of the clamp the guard has to be inert: the model is the bare formula there.
+                if (z > 1.001f * clamp)
+                {
+                    float t = r / (4f * z);
+                    float raw = 1f / (1f - t * t);
+                    maxRawDev = math.max(maxRawDev, math.abs(f - raw) / raw);
+                }
+            }
+
+            Out[6] = maxF; Out[7] = minF;
+            Out[8] = neverRises ? 1f : 0f;
+            Out[9] = finite ? 1f : 0f;
+            Out[10] = maxVecGap;
+            Out[11] = maxRawDev;
+            Out[12] = GroundEffect.Factor(0.5f * r, 0f);
         }
     }
 

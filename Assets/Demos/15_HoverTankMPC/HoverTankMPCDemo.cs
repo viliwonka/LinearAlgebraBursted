@@ -30,6 +30,13 @@ namespace LinearAlgebraDemos
     ///    controls against 6 wrench components, so the rig is over-actuated and the solve is what
     ///    decides how the work is shared.
     ///
+    /// Thrust is augmented near the ground by <see cref="GroundEffect"/>, per nozzle, from a downward
+    /// ray at each exhaust plane — so a tilted hull is pushed harder on its low side. The same four
+    /// factors scale the force applied to the rigid body AND the allocation's Jacobian, so the two
+    /// agree exactly and the demanded wrench is delivered at any height. Their mean also enters the
+    /// hover model's vertical input column, which softens the hover gain slightly near the ground; see
+    /// <see cref="HoverTankMPCStepJob.Execute"/> for why that is a choice and not a measurement.
+    ///
     /// The corner raycasts are the only ground sense, and the attitude estimate is built from the
     /// DIFFERENCES between them, so it cannot separate hull tilt from terrain slope — see
     /// <see cref="HoverTankMPCStepJob.Execute"/> for what that costs over sloping ground.
@@ -68,6 +75,12 @@ namespace LinearAlgebraDemos
         [Header("Gimballed thrusters (allocated by QP)")]
         public GimbalSettings thrusters = GimbalSettings.Default;
 
+        [Header("Ground effect")]
+        [Tooltip("Off makes every thruster deliver exactly what it was commanded at any height, which is what the rig would feel with no ground under it.")]
+        public bool groundEffect = true;
+        [Tooltip("Effective nozzle radius R in the Cheeseman-Bennett model, metres. The augmentation is worth 1.07x at a nozzle height of R and 1.33x at R/2, so this sets the ride height band over which the effect is felt.")]
+        [Range(0.5f, 4f)] public float nozzleRadius = 2f;
+
         [Header("Driver demand (routed through the allocation)")]
         [Range(1000f, 40000f)] public float driveForce = 9000f;
         [Tooltip("Peak sideways force, newtons. Lateral authority is bought out of the same thrust that carries the hull, so this stays under driveForce.")]
@@ -93,8 +106,15 @@ namespace LinearAlgebraDemos
         [Range(1f, 15f)] public float camHeight = 5f;
         [Range(1f, 30f)] public float camLag = 6f;
 
+        /// <summary>
+        /// Nozzle exit plane below its mount, metres — matches the nozzle mesh and its plume, and is
+        /// where the ground-effect height is measured. Being a hull-local point strictly outside the
+        /// hull collider is what lets the ground-effect ray fire from it without hitting the hull.
+        /// </summary>
+        const float NozzleExitDrop = 0.7f;
+
         static readonly string[] MountNames = { "FL", "FR", "BL", "BR" };
-        static readonly Rect PanelRect = new Rect(10, 10, 560, 590);
+        static readonly Rect PanelRect = new Rect(10, 10, 560, 634);
 
         // self-assembled scene objects (Start)
         GameObject groundGO, hullGO, hullVisualGO;
@@ -114,6 +134,8 @@ namespace LinearAlgebraDemos
         float lookX;               // mouse X accumulated since the last fixed step
         bool mouseCaptured = true; // driving mode; ESC releases the cursor to the panel
         bool4 cornerReturn;        // whether each corner ray found ground this step
+        float4 nozzleHeights;      // each nozzle exit's range to the ground, metres
+        bool4 nozzleReturn;        // whether each nozzle ray found ground this step
         // last step's inputs and measured rates, cached so the readout can name the axis owner
         float lastSteer, lastStrafe, lastForwardSpeed, lastLateralSpeed, lastYawRate;
         bool lastBrake;
@@ -130,6 +152,7 @@ namespace LinearAlgebraDemos
         NativeArray<float> controls;      // 4 pitch angles, 4 yaw angles (rad), then 4 throttles
         NativeArray<QPInfo> allocOut;
         NativeArray<float> wrenchOut;     // 6 demanded then 6 achieved (N, N*m)
+        NativeArray<float> groundOut;     // per-nozzle thrust augmentation this step
 
         bool hoverDivergedLogged, allocFailedLogged;
         float frameMs;
@@ -148,6 +171,7 @@ namespace LinearAlgebraDemos
             controls = new NativeArray<float>(GimbalAllocation.ControlCount, Allocator.Persistent);
             allocOut = new NativeArray<QPInfo>(1, Allocator.Persistent);
             wrenchOut = new NativeArray<float>(2 * GimbalAllocation.WrenchRows, Allocator.Persistent);
+            groundOut = new NativeArray<float>(GimbalAllocation.Thrusters, Allocator.Persistent);
 
             // Seed both height buffers at the setpoint: a corner that has never had a return still has
             // to hand the estimate something, and the setpoint is the one value that commands nothing.
@@ -155,7 +179,9 @@ namespace LinearAlgebraDemos
             {
                 cornerHeights[i] = targetRideHeight;
                 prevCornerHeights[i] = targetRideHeight;
+                groundOut[i] = 1f;   // out of ground effect until the first step measures otherwise
             }
+            nozzleHeights = new float4(rayLength);
             ResetControls();
         }
 
@@ -171,6 +197,7 @@ namespace LinearAlgebraDemos
             if (controls.IsCreated) controls.Dispose();
             if (allocOut.IsCreated) allocOut.Dispose();
             if (wrenchOut.IsCreated) wrenchOut.Dispose();
+            if (groundOut.IsCreated) groundOut.Dispose();
 
             if (plumeMaterial != null) Destroy(plumeMaterial);
             if (plumeTexture != null) Destroy(plumeTexture);
@@ -277,6 +304,11 @@ namespace LinearAlgebraDemos
         // root later.
         Vector3 CornerWorld(int i) => hullGO.transform.position + hullGO.transform.rotation * cornerLocal[i];
         Vector3 MountWorld(int i) => hullGO.transform.position + hullGO.transform.rotation * mountLocal[i];
+
+        /// <summary>Nozzle i's exhaust plane in world space — where its ground-effect height is measured.</summary>
+        Vector3 NozzleExitWorld(int i)
+            => hullGO.transform.position
+             + hullGO.transform.rotation * (mountLocal[i] + Vector3.down * NozzleExitDrop);
 
         void ResetControls()
         {
@@ -449,6 +481,22 @@ namespace LinearAlgebraDemos
                 if (cornerReturn[i]) cornerHeights[i] = hit.distance;
             }
 
+            // ---- sense: 4 nozzle-down raycasts, one per thruster, for ground effect ----
+            // Fired from the exhaust planes rather than the sense corners, because ground effect is a
+            // property of where the DOWNWASH meets the ground: a tilted hull puts its four nozzles at
+            // four different heights, and the asymmetric augmentation that follows is the whole point.
+            //
+            // A nozzle whose ray finds nothing reads rayLength rather than holding its last range: no
+            // ground within rayLength IS the physical answer here (out of ground effect), and unlike
+            // the corner estimate nothing differences these four, so a step in one cannot become a
+            // phantom tilt.
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 exit = NozzleExitWorld(i);
+                nozzleReturn[i] = Physics.Raycast(exit, Vector3.down, out RaycastHit hit, rayLength);
+                nozzleHeights[i] = nozzleReturn[i] ? hit.distance : rayLength;
+            }
+
             // Mouse X and A/D are two INPUT DEVICES on one axis, so they sum and clamp.
             float mouseSteer = lookX * lookSensitivity;
             lookX = 0f;
@@ -483,6 +531,10 @@ namespace LinearAlgebraDemos
                 LateralSpeed = lastLateralSpeed,
                 YawRate = lastYawRate,
                 TiltCos = Vector3.Dot(hullGO.transform.up, Vector3.up),
+
+                NozzleHeights = nozzleHeights,
+                NozzleRadius = groundEffect ? nozzleRadius : 0f,
+                GroundOut = groundOut,
             };
 
             var sw = Stopwatch.StartNew();
@@ -498,11 +550,15 @@ namespace LinearAlgebraDemos
             // ---- apply thrust: one force per thruster, at its mount, along its gimbal direction ----
             // AddForceAtPosition reproduces both the force and its moment about the center of mass,
             // which is the wrench the allocation solved for.
+            //
+            // groundOut is the step job's own ground-effect factor, not a second evaluation of the
+            // model: the plant and the allocation's Jacobian must scale by the same number or the hover
+            // loop chases an error the allocation cannot see.
             for (int i = 0; i < 4; i++)
             {
                 float pitch = controls[i], yaw = controls[4 + i], throttle = controls[8 + i];
                 float3 dir = GimbalAllocation.ForceDirection(pitch, yaw);
-                float magnitude = throttle * thrusters.maxThrust * thrusterHealth[i];
+                float magnitude = throttle * thrusters.maxThrust * thrusterHealth[i] * groundOut[i];
                 Vector3 worldDir = hullGO.transform.TransformDirection(new Vector3(dir.x, dir.y, dir.z));
                 rb.AddForceAtPosition(worldDir * magnitude, MountWorld(i), ForceMode.Force);
 
@@ -567,6 +623,19 @@ namespace LinearAlgebraDemos
                 Gizmos.DrawSphere(world + Vector3.down * cornerHeights[i], 0.08f);
             }
 
+            // Ground-effect ranges, one per nozzle, warming from grey to orange with that nozzle's
+            // augmentation: over sloping ground the four differ, which is what the allocation is
+            // trading against.
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 exit = NozzleExitWorld(i);
+                float t = Mathf.Clamp01((groundOut[i] - 1f) / (GroundEffect.MaxFactor - 1f));
+                Gizmos.color = nozzleReturn[i]
+                    ? Color.Lerp(new Color(0.35f, 0.35f, 0.4f), new Color(1f, 0.55f, 0.1f), t)
+                    : new Color(0.22f, 0.22f, 0.26f);
+                Gizmos.DrawLine(exit, exit + Vector3.down * nozzleHeights[i]);
+            }
+
             float lim = GimbalAllocation.MaxGimbalDeg;
             float angLo = Mathf.Clamp(Mathf.Min(thrusters.servoMinDeg, thrusters.servoMaxDeg), -lim, lim) * Mathf.Deg2Rad;
             float angHi = Mathf.Clamp(Mathf.Max(thrusters.servoMinDeg, thrusters.servoMaxDeg), -lim, lim) * Mathf.Deg2Rad;
@@ -619,6 +688,13 @@ namespace LinearAlgebraDemos
             GUILayout.Label($"yaw axis: {YawOwner()}   speed {lastForwardSpeed,5:F1} m/s   strafe {lastLateralSpeed,5:F1} m/s   yaw rate {lastYawRate * Mathf.Rad2Deg,5:F0} deg/s");
             GUILayout.Label($"ride height cmd {targetRideHeight:F2} m   ground {GroundLabel()}   mouse {(mouseCaptured ? "CAPTURED" : "released")}");
 
+            GUILayout.BeginHorizontal();
+            groundEffect = GUILayout.Toggle(groundEffect, "ground effect", GUILayout.Width(110));
+            GUILayout.Label(groundEffect
+                ? $"x{MeanGroundGain():F3} into B   FL {groundOut[0]:F2} FR {groundOut[1]:F2} BL {groundOut[2]:F2} BR {groundOut[3]:F2}   clamp x{GroundEffect.MaxFactor:F2} under {GroundEffect.ClampHeight(nozzleRadius):F2} m"
+                : "off — thrusters deliver exactly what they are commanded at any height");
+            GUILayout.EndHorizontal();
+
             for (int i = 0; i < 4; i++)
             {
                 float throttle = controls[8 + i];
@@ -637,6 +713,7 @@ namespace LinearAlgebraDemos
             GUILayout.EndHorizontal();
 
             targetRideHeight = LabeledSlider($"ride height {targetRideHeight:F2}", targetRideHeight, RideHeightMin, RideHeightMax);
+            nozzleRadius = LabeledSlider($"nozzle radius {nozzleRadius:F2}m", nozzleRadius, 0.5f, 4f);
             qTilt = LabeledSlider($"Q tilt {qTilt:F0}", qTilt, 1f, 300f);
             lookSensitivity = LabeledSlider($"mouse sens {lookSensitivity:F2}", lookSensitivity, 0.01f, 1f);
             climbSensitivity = LabeledSlider($"climb sens {climbSensitivity:F2}m", climbSensitivity, 0.01f, 1f);
@@ -690,6 +767,9 @@ namespace LinearAlgebraDemos
             return shortfall ? owner + "  [YAW SATURATED]" : owner;
         }
 
+        /// <summary>Mean of the four nozzle augmentations — the factor the hover model's B carries.</summary>
+        float MeanGroundGain() => 0.25f * (groundOut[0] + groundOut[1] + groundOut[2] + groundOut[3]);
+
         // Corners whose ray came back this step. Anything less than 4 means part of the attitude
         // estimate is running on held ranges.
         string GroundLabel()
@@ -716,6 +796,10 @@ namespace LinearAlgebraDemos
     /// <see cref="GimbalWrench"/>; then allocates that onto 4 pitch angles, 4 yaw angles and 4
     /// throttles with <see cref="GimbalAllocation.Solve"/>. The LQR re-runs every step (warm
     /// <see cref="floatLQRState"/>, cheap once converged) to showcase the warm-start path.
+    ///
+    /// This step's <see cref="GroundEffect"/> augmentation enters the allocation's Jacobian, where it
+    /// is exact, and the hover model's vertical input column, where it is a deliberate detune — see
+    /// <see cref="Execute"/>.
     ///
     /// Caller must RunByRef and copy HoverLqrState back.
     /// </summary>
@@ -764,8 +848,28 @@ namespace LinearAlgebraDemos
         /// <summary>cos of the hull's tilt from world up, for the gravity feedforward.</summary>
         public float TiltCos;
 
+        // ground effect
+        /// <summary>Each nozzle's exit plane above the ground, metres, in mount order.</summary>
+        public float4 NozzleHeights;
+
+        /// <summary>Effective nozzle radius, metres. 0 or less turns ground effect off.</summary>
+        public float NozzleRadius;
+
+        /// <summary>
+        /// The four <see cref="GroundEffect.Factor(float, float)"/> values this step settled on. The
+        /// caller must scale the force it applies to the rigid body by these, since they are also what
+        /// the allocation sized its throttles against.
+        /// </summary>
+        public NativeArray<float> GroundOut;
+
         public void Execute()
         {
+            // ---- ground effect: one augmentation per nozzle ----
+            // Evaluated once, here, and read back out: the applied force and the allocation's view of
+            // what a throttle buys are then the same numbers by construction, not by agreement.
+            float4 groundGain = GroundEffect.Factor(NozzleHeights, NozzleRadius);
+            for (int i = 0; i < GimbalAllocation.Thrusters; i++) GroundOut[i] = groundGain[i];
+
             // ---- reconstruct the 6-state hover/attitude estimate from corner heights ----
             // roll = rotation about the forward axis, pitch = rotation about the right axis;
             // both derived purely from differenced corner ride heights (and their finite-
@@ -805,8 +909,23 @@ namespace LinearAlgebraDemos
             PrevCornerHeights[0] = hFL; PrevCornerHeights[1] = hFR;
             PrevCornerHeights[2] = hBL; PrevCornerHeights[3] = hBR;
 
-            // ---- hover LQR: warm re-solve every step ----
-            BuildHoverModel(Dt, QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque,
+            // ---- hover LQR: warm re-solve every step, with the mean augmentation in B ----
+            // WHAT THIS IS, PRECISELY: a deliberate mild detune, NOT identification of a varying plant.
+            // The allocation is handed the true per-nozzle gain and inverts it exactly, so a unit of
+            // commanded vertical acceleration still buys exactly one unit at every height and ground
+            // effect is invisible to the controller. Telling the model otherwise only lowers K, so the
+            // real closed loop -- which runs against the true unity map, not against this B -- gets
+            // slightly SOFTER near the ground rather than tighter. That is the intent: hold station
+            // less aggressively where the cushion is already helping.
+            //
+            // Scheduling would be real identification if the allocation were given only an ESTIMATE of
+            // the gain; the plant would then genuinely vary with height and the estimate's error would
+            // be a disturbance worth rejecting.
+            //
+            // Free either way: the model is rebuilt and warm re-solved every step regardless, and the
+            // warm floatLQRState re-converges from the previous step's S rather than solving cold.
+            BuildHoverModel(Dt, 0.25f * math.csum(groundGain),
+                QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque,
                 Allocator.Temp, out var A, out var B, out var Q, out var R);
 
             RiccatiInfo info = LQR.lqr(in A, in B, in Q, in R, ref HoverK, ref HoverLqrState);
@@ -884,7 +1003,7 @@ namespace LinearAlgebraDemos
 
             // ---- allocation: 12 controls onto the 6 wrench components ----
             var z = new floatN(Controls);   // view, no copy
-            GimbalRig rig = GimbalAllocation.BuildRig(in Settings, MountX, MountY, MountZ, Health,
+            GimbalRig rig = GimbalAllocation.BuildRig(in Settings, MountX, MountY, MountZ, Health, groundGain,
                 in z, Dt, Mass * Gravity, MountArm);
             AllocOut[0] = GimbalAllocation.Solve(in rig, in desired, ref z, 0);
 
@@ -904,8 +1023,14 @@ namespace LinearAlgebraDemos
         /// Gravity feedforward and the accel -> force/torque conversion (via mass/rollInertia/
         /// pitchInertia) are the caller's job, not this model's. Allocates A/B/Q/R fresh with
         /// <paramref name="allocator"/> (caller disposes).
+        ///
+        /// <paramref name="liftGain"/> scales the VERTICAL input column alone; 1 is the nominal model.
+        /// The two angular columns are untouched — an augmentation asymmetry across the four nozzles is
+        /// a torque the allocation resolves, not a change in the hull's angular control effectiveness.
+        /// Whether a value other than 1 identifies a real change in control effectiveness, or only
+        /// detunes the gain, depends on whether the caller's actuator path already compensates for it.
         /// </summary>
-        public static void BuildHoverModel(float dt,
+        public static void BuildHoverModel(float dt, float liftGain,
             float qHeight, float qHeightRate, float qTilt, float qTiltRate, float rThrust, float rTorque,
             Allocator allocator, out floatMxN A, out floatMxN B, out floatMxN Q, out floatMxN R)
         {
@@ -917,7 +1042,7 @@ namespace LinearAlgebraDemos
             for (int i = 0; i < 6; i++) A[i, i] = 1f;
             A[0, 1] = dt; A[2, 3] = dt; A[4, 5] = dt;
 
-            B[1, 0] = dt; B[3, 1] = dt; B[5, 2] = dt;
+            B[1, 0] = dt * liftGain; B[3, 1] = dt; B[5, 2] = dt;
 
             Q[0, 0] = qHeight; Q[1, 1] = qHeightRate;
             Q[2, 2] = qTilt; Q[3, 3] = qTiltRate;
