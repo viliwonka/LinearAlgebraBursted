@@ -1,6 +1,44 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## QP.TryAddToFactor
+
+- 2026-07-26 | **A full working set threw instead of solving.** With `s.k == n` every degree of
+  freedom is already pinned — a vertex, a perfectly ordinary active-set outcome — but the tail-norm
+  rank test asked for `Norms.L2Range(vCol, n, n)`, an empty range, whose precondition throws
+  `start must be less than end`. From inside a Burst job that surfaces as an unhandled exception, not
+  a status. Guarded at the caller (`k >= n` → return false, the existing dependent-candidate path
+  every call site already handles) rather than by loosening `L2Range`, whose throw is a deliberate
+  precondition other callers lean on. Found by the moving-wall MPC test: a barrier sweeping past the
+  vehicle drives enough rows active to fill the working set. **float only** — double's iterates never
+  reached the corner in the same run, so this had been sitting behind a dtype split.
+
+## MPC.setSoftBound
+
+- 2026-07-26 | Added, driven by demo 15's anti-collision need: a moving obstacle constraint had no
+  route short of reconstructing `fProxyMPCState`, and the MPC benchmark prices that at **7.08 ms** at
+  (N=30, n=24, m=8) against a **0.45 ms** warm solve — two orders out, and per frame. Only
+  `rowConstRHS` depends on `d`; `Phi`/`Gamma`/`H`/`GtQbar`/`Arows`/`qCoupling` and the carried
+  `qpFactor`/`qpReduced` are all `d`-free, so the move is O(N·k) writes and reaches the QP through
+  `BuildGeneralRHS` exactly the way a moved `x0` does. No warm-start invalidation: `RepairWorkingSet`
+  already re-validates every entry against the current RHS each frame.
+- 2026-07-26 | The per-stage form is a real capability gain, not sugar. The CONSTRUCTOR's `d` is one
+  bound per row shared by every stage, but the condensed layout stores one RHS per (stage, row) —
+  `rowConstRHS[k*nSoftPerStage + si]` — so a per-stage bound was always expressible and simply had no
+  API. `SetSoftBoundPerStageBindsPerStage` pins a slack value (0.3) that NO constant bound can
+  produce, which is what makes that claim testable rather than asserted.
+- 2026-07-26 | **The state carried `d` TWICE** and the first cut of `setSoftBound` moved only one of
+  them. `BuildWarmStartGuess`'s slack guess read `s.d[si]` while the constraint itself read
+  `rowConstRHS`, so a moved wall produced a warm start seeded against the OLD bound — green on every
+  pre-existing test, since before this API the two could never disagree. Fixed by deleting the `d`
+  field outright rather than syncing it: `rowConstRHS` is indexed per (stage, row) and `s.d` is
+  per-row only, so `s.d` structurally cannot represent a per-stage bound and would have stayed a
+  stale-copy trap. Its only reader was that one line. Caught by the bit-exactness oracle below on
+  the very first run — an approximate tolerance would have let it pass.
+- 2026-07-26 | Test oracle worth reusing: build-at-d versus build-elsewhere-then-move are the SAME
+  QP, both cold, so the two `u0` values must agree BIT-EXACTLY — an inexact match is the signature of
+  `d` having leaked into the condensing. Approximate agreement would not have distinguished the two.
+
 ## Fit / Blas.Triangular — review cleanup, 2026-07-26
 - 2026-07-26 | `Blas.triUpper` now reports `Singular` instead of always reporting Success. Fixed at the
   innermost kernel rather than per-caller, so LU/CHO/QR/LQ all gain it. Rejects a zero, NaN or

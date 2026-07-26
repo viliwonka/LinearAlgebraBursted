@@ -170,9 +170,6 @@ namespace BULA.Control
         /// disabled.</summary>
         public fProxyMxN C;
 
-        /// <summary>Soft-row right-hand sides, length nSoftPerStage.</summary>
-        public fProxyN d;
-
         /// <summary>Soft-row L1 (exact-penalty) weight.</summary>
         public fProxy rho1;
 
@@ -255,7 +252,6 @@ namespace BULA.Control
             if (Rcross.Data.IsCreated) Rcross.Dispose();
             if (S.Data.IsCreated) S.Dispose();
             if (C.Data.IsCreated) C.Dispose();
-            if (d.Data.IsCreated) d.Dispose();
             if (z.Data.IsCreated) z.Dispose();
             if (wstatus.IsCreated) wstatus.Dispose();
             if (cScratch.Data.IsCreated) cScratch.Dispose();
@@ -356,7 +352,6 @@ namespace BULA.Control
             this.uHi = new fProxyN(in uHi, allocator);
             this.S = hasDeltaU ? new fProxyMxN(in S, allocator) : default;
             this.C = hasSoftRows ? new fProxyMxN(in C, allocator) : default;
-            this.d = hasSoftRows ? new fProxyN(in d, allocator) : default;
             this.rho1 = rho1; this.rho2 = rho2;
             this.Kstab = hasPrestab ? new fProxyMxN(in Kstab, allocator) : default;
 
@@ -372,7 +367,7 @@ namespace BULA.Control
                 lqrState.Dispose(); Kinf.Dispose();
                 this.A.Dispose(); this.B.Dispose(); this.uLo.Dispose(); this.uHi.Dispose();
                 if (hasDeltaU) this.S.Dispose();
-                if (hasSoftRows) { this.C.Dispose(); this.d.Dispose(); }
+                if (hasSoftRows) this.C.Dispose();
                 if (hasPrestab) this.Kstab.Dispose();
                 _populated.Dispose();
                 throw new ArgumentException("fProxyMPCState: terminal DARE did not converge -- (A,B) must be stabilizable");

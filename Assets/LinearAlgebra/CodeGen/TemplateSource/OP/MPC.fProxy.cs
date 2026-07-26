@@ -22,6 +22,11 @@ namespace BULA.Control
     // alongside the input plan, so the whole starting point -- inputs AND slacks -- is feasible before
     // the QP ever runs.
     //
+    // Moving bounds: MPC.setSoftBound rewrites the soft rows' RHS in place. Only rowConstRHS depends on
+    // d -- the condensing (Phi/Gamma/H/GtQbar/Arows/qCoupling) and the cached QP factorization are all
+    // d-free -- so a moving constraint costs O(N*nSoftPerStage) writes rather than a reconstruction, and
+    // reaches the QP the same way a moved x0 does: through BuildGeneralRHS, which rebuilds every call.
+    //
     // Failure contract: on anything other than QPStatus.Optimal/MaxIterations (should not happen for a
     // well-posed problem -- defensive only), MPC.solve returns the shifted PREVIOUS plan's first input
     // rather than propagating a QP failure into the caller's control loop. That value is captured
@@ -113,6 +118,34 @@ namespace BULA.Control
             }
 
             return info;
+        }
+
+        /// <summary>
+        /// Moves the soft state rows' bound (the <c>d</c> of <c>C x &lt;= d</c>) without rebuilding
+        /// <paramref name="s"/>. Requires soft rows; throws otherwise.
+        /// </summary>
+        /// <param name="d">Either one bound per soft row (length <c>nSoftPerStage</c>, held across the
+        /// whole horizon) or a per-stage bound (length <c>N*nSoftPerStage</c>, one row-sized block per
+        /// predicted stage x_1..x_N) -- detected from its own length, matching <see cref="solve"/>'s
+        /// own reference convention. Must be finite.</param>
+        public static void setSoftBound(ref fProxyMPCState s, in fProxyN d)
+        {
+            if (!s.IsCreated)
+                throw new ArgumentException("MPC.setSoftBound: state must be constructed via new fProxyMPCState(...)");
+            if (!s.hasSoftRows)
+                throw new ArgumentException("MPC.setSoftBound: state has no soft rows");
+            int k = s.nSoftPerStage;
+            if (d.N != k && d.N != s.nSlack)
+                throw new ArgumentException("MPC.setSoftBound: d.N must equal nSoftPerStage (held) or N*nSoftPerStage (per-stage)");
+
+            bool perStage = d.N == s.nSlack;
+            for (int i = 0; i < s.nSlack; i++)
+            {
+                fProxy v = perStage ? d[i] : d[i % k];
+                if (!math.isfinite(v))
+                    throw new ArgumentException("MPC.setSoftBound: d must be finite");
+                s.rowConstRHS[i] = v;
+            }
         }
 
         // u0 = z[0:m] directly (z holds physical inputs), or -Kstab x0 + z[0:m] when prestabilized (z
@@ -214,7 +247,7 @@ namespace BULA.Control
                     {
                         fProxy act = (fProxy)0;
                         for (int p = 0; p < n; p++) act += s.C[si, p] * s.xTrajScratch[k * n + p];
-                        fProxy viol = act - s.d[si];
+                        fProxy viol = act - s.rowConstRHS[rowIdx];
                         s.z[nu + rowIdx] = viol > (fProxy)0 ? viol : (fProxy)0;
                         rowIdx++;
                     }

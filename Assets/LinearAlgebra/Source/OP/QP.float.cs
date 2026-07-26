@@ -1725,6 +1725,11 @@ namespace BULA
         {
             int k = s.k;
 
+            // A working set already holding n independent rows pins every degree of freedom, so no
+            // further candidate can be independent of it. Rejecting here also keeps the tail-norm range
+            // below non-empty, which Norms.L2Range requires.
+            if (k >= n) return false;
+
             // candidate column of A_Wᵀ -- WriteWorkingSetColumn's sign orientation, vector form
             float sign = candStatus == WorkingSetStatus.ActiveUpper ? (float)(-1) : (float)1;
             if (t < m)

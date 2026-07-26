@@ -174,9 +174,6 @@ namespace BULA.Control
         /// disabled.</summary>
         public doubleMxN C;
 
-        /// <summary>Soft-row right-hand sides, length nSoftPerStage.</summary>
-        public doubleN d;
-
         /// <summary>Soft-row L1 (exact-penalty) weight.</summary>
         public double rho1;
 
@@ -259,7 +256,6 @@ namespace BULA.Control
             if (Rcross.Data.IsCreated) Rcross.Dispose();
             if (S.Data.IsCreated) S.Dispose();
             if (C.Data.IsCreated) C.Dispose();
-            if (d.Data.IsCreated) d.Dispose();
             if (z.Data.IsCreated) z.Dispose();
             if (wstatus.IsCreated) wstatus.Dispose();
             if (cScratch.Data.IsCreated) cScratch.Dispose();
@@ -360,7 +356,6 @@ namespace BULA.Control
             this.uHi = new doubleN(in uHi, allocator);
             this.S = hasDeltaU ? new doubleMxN(in S, allocator) : default;
             this.C = hasSoftRows ? new doubleMxN(in C, allocator) : default;
-            this.d = hasSoftRows ? new doubleN(in d, allocator) : default;
             this.rho1 = rho1; this.rho2 = rho2;
             this.Kstab = hasPrestab ? new doubleMxN(in Kstab, allocator) : default;
 
@@ -376,7 +371,7 @@ namespace BULA.Control
                 lqrState.Dispose(); Kinf.Dispose();
                 this.A.Dispose(); this.B.Dispose(); this.uLo.Dispose(); this.uHi.Dispose();
                 if (hasDeltaU) this.S.Dispose();
-                if (hasSoftRows) { this.C.Dispose(); this.d.Dispose(); }
+                if (hasSoftRows) this.C.Dispose();
                 if (hasPrestab) this.Kstab.Dispose();
                 _populated.Dispose();
                 throw new ArgumentException("doubleMPCState: terminal DARE did not converge -- (A,B) must be stabilizable");

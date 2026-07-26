@@ -36,6 +36,12 @@ using Unity.Mathematics;
 //     transient in a receding-horizon run, and a warm sequence's iteration count at a given frame never
 //     exceeds a freshly-constructed (cold) state solving the identical point.
 //
+// (e) Prestabilization is a pure change of coordinates and must reproduce the identical physical answer.
+// (f) MPC.setSoftBound -- moving the wall equals rebuilding at that wall EXACTLY (nothing but the RHS
+//     may depend on d), the per-stage form binds one stage at a time (which the constructor's shared d
+//     cannot express), and a wall closing in every frame still leaves the warm path on the true
+//     minimizer of the QP it was handed.
+//
 // Burst execution (house pattern): NUnit Assert.IsTrue with == only inside the job, first-failure
 // recorded into Fail[0..3], read back on the managed side -- same shape as ControlLQRTests.double.cs /
 // KalmanTests.double.cs.
@@ -55,6 +61,9 @@ public class doubleMPCTests
             WarmIterationsBeatCold,
             WarmPersistentMatchesColdEachFrame,
             PrestabBindingBoundMatchesNonPrestab,
+            SetSoftBoundMatchesRebuild,
+            SetSoftBoundPerStageBindsPerStage,
+            SetSoftBoundSurvivesWarmStart,
         }
 
         public TestType Type;
@@ -73,6 +82,9 @@ public class doubleMPCTests
                 case TestType.WarmIterationsBeatCold: WarmIterationsBeatCold(); break;
                 case TestType.WarmPersistentMatchesColdEachFrame: WarmPersistentMatchesColdEachFrame(); break;
                 case TestType.PrestabBindingBoundMatchesNonPrestab: PrestabBindingBoundMatchesNonPrestab(); break;
+                case TestType.SetSoftBoundMatchesRebuild: SetSoftBoundMatchesRebuild(); break;
+                case TestType.SetSoftBoundPerStageBindsPerStage: SetSoftBoundPerStageBindsPerStage(); break;
+                case TestType.SetSoftBoundSurvivesWarmStart: SetSoftBoundSurvivesWarmStart(); break;
             }
         }
 
@@ -427,6 +439,156 @@ public class doubleMPCTests
             return vec;
         }
 
+        // ============================ (f) moving soft bounds ============================
+
+        // Moving the bound must produce the SAME QP a rebuild at that bound produces. Both states here
+        // are freshly constructed and solved once, so nothing but rowConstRHS can differ and the two u0
+        // values must agree EXACTLY -- an inexact match means d leaked into the condensing.
+        //
+        // x0=(3,2.3) is SoftRowUnavoidableMinimalViolation's point, reused for its hand-derived slack:
+        // 0.6 at a wall of 5, and ~0 at a wall of 9 (which the trajectory never reaches). The third
+        // state, left at 9, is the non-vacuity probe -- without it the agreement above would also hold
+        // if setSoftBound did nothing at all.
+        void SetSoftBoundMatchesRebuild()
+        {
+            var A = Mat2(1, 1, 0, 1); var B = ColVec2(0, 1); var Q = Eye(2); var R = R1(1);
+            var uLo = Vec1((double)(-2)); var uHi = Vec1((double)2);
+            var C = WallRow();
+            var dNear = Vec1((double)5); var dFar = Vec1((double)9);
+
+            var built = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi, in C, in dNear);
+            var moved = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi, in C, in dFar);
+            var stale = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi, in C, in dFar);
+            MPC.setSoftBound(ref moved, in dNear);
+
+            var x0 = Vec2(3, (double)2.3);
+            var reference = new doubleN(2, Allocator.Temp);   // zero-initialized: track to the origin
+            var u0Built = new doubleN(1, Allocator.Temp, true);
+            var u0Moved = new doubleN(1, Allocator.Temp, true);
+            var u0Stale = new doubleN(1, Allocator.Temp, true);
+
+            var infoBuilt = MPC.solve(ref built, in x0, in reference, ref u0Built);
+            var infoMoved = MPC.solve(ref moved, in x0, in reference, ref u0Moved);
+            var infoStale = MPC.solve(ref stale, in x0, in reference, ref u0Stale);
+            AssertTrue(infoBuilt.status == MPCStatus.Optimal || infoBuilt.status == MPCStatus.MaxIterations);
+            AssertTrue(infoMoved.status == MPCStatus.Optimal || infoMoved.status == MPCStatus.MaxIterations);
+            AssertTrue(infoStale.status == MPCStatus.Optimal || infoStale.status == MPCStatus.MaxIterations);
+
+            AssertTrue(u0Moved[0] == u0Built[0]);
+            AssertTrue(infoMoved.maxSlackViolation == infoBuilt.maxSlackViolation);
+            AssertCloseD(infoMoved.maxSlackViolation, 0.6, SlackTol());
+
+            // Non-vacuity: the wall this test moved away from must genuinely be a different problem.
+            AssertLEd(infoStale.maxSlackViolation, SlackTol());
+
+            x0.Dispose(); reference.Dispose(); u0Built.Dispose(); u0Moved.Dispose(); u0Stale.Dispose();
+            built.Dispose(); moved.Dispose(); stale.Dispose(); C.Dispose(); dNear.Dispose(); dFar.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+        }
+
+        // The per-stage form addresses one stage at a time, which the CONSTRUCTOR cannot express (its d
+        // is one bound per row, shared by every stage). At x0=(3,2.3) a wall of 5 forces 0.3 of slack at
+        // stage 0 and 0.6 at stage 1 (both hand-derived in SoftRowUnavoidableMinimalViolation), so
+        // walling stage 0 alone and leaving the rest at 9 must report 0.3 -- a value NO constant bound
+        // can produce, since 5 everywhere gives 0.6 and 9 everywhere gives 0.
+        void SetSoftBoundPerStageBindsPerStage()
+        {
+            var A = Mat2(1, 1, 0, 1); var B = ColVec2(0, 1); var Q = Eye(2); var R = R1(1);
+            var uLo = Vec1((double)(-2)); var uHi = Vec1((double)2);
+            var C = WallRow(); var dFar = Vec1((double)9);
+            var mpc = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi, in C, in dFar);
+
+            var x0 = Vec2(3, (double)2.3);
+            var reference = new doubleN(2, Allocator.Temp);
+            var u0 = new doubleN(1, Allocator.Temp, true);
+
+            // A per-stage array whose entries are all equal must reproduce the held form exactly.
+            var flat = new doubleN(8, Allocator.Temp, true);
+            for (int k = 0; k < 8; k++) flat[k] = (double)5;
+            MPC.setSoftBound(ref mpc, in flat);
+            var infoFlat = MPC.solve(ref mpc, in x0, in reference, ref u0);
+            AssertTrue(infoFlat.status == MPCStatus.Optimal || infoFlat.status == MPCStatus.MaxIterations);
+            AssertCloseD(infoFlat.maxSlackViolation, 0.6, SlackTol());
+
+            var staged = new doubleN(8, Allocator.Temp, true);
+            staged[0] = (double)5;
+            for (int k = 1; k < 8; k++) staged[k] = (double)9;
+            MPC.setSoftBound(ref mpc, in staged);
+            var infoStaged = MPC.solve(ref mpc, in x0, in reference, ref u0);
+            AssertTrue(infoStaged.status == MPCStatus.Optimal || infoStaged.status == MPCStatus.MaxIterations);
+            AssertCloseD(infoStaged.maxSlackViolation, 0.3, SlackTol());
+
+            flat.Dispose(); staged.Dispose();
+            x0.Dispose(); reference.Dispose(); u0.Dispose(); mpc.Dispose(); C.Dispose(); dFar.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+        }
+
+        // A wall that moves every frame must not corrupt the carried factorization: the warm solve has
+        // to land on the true minimizer of the QP it was actually handed. Same oracle as
+        // WarmPersistentMatchesColdEachFrame -- cold-solve the identical condensed QP still sitting in
+        // H/cScratch/Arows/bScratch -- but with the bound closing in on the vehicle each frame, so the
+        // working set is forced to move on ticks the reuse path would otherwise skip.
+        void SetSoftBoundSurvivesWarmStart()
+        {
+            var A = Mat2(1, 1, 0, 1); var B = ColVec2(0, 1); var Q = Eye(2); var R = R1(1);
+            var uLo = Vec1((double)(-0.5)); var uHi = Vec1((double)0.5);
+            var C = WallRow(); var d0 = Vec1((double)12);
+            var mpc = new doubleMPCState(2, 1, 8, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi, in C, in d0);
+
+            // Drive TOWARD the wall (setpoint at 10, starting at rest at the origin) while the wall
+            // sweeps in at 1.0 per frame against an input bound of 0.5 -- so it necessarily overtakes
+            // the vehicle rather than being outrun, and the soft rows are forced through activation,
+            // saturation and release over one run.
+            var x = Vec2(0, 0);
+            var reference = Vec2(10, 0);
+            var u0 = new doubleN(1, Allocator.Temp, true);
+            var wall = Vec1((double)12);
+
+            int nz = mpc.nz;
+            var xCold = new doubleN(nz, Allocator.Temp, true);
+            // RELATIVE, unlike WarmPersistentMatchesColdEachFrame's absolute bound: that run tracks to
+            // the origin and its objective is O(1), whereas this one drives to a setpoint of 10 against
+            // a barrier and reaches ~1.1e4, where an absolute 3e-3 is below the float noise floor.
+            double objRelTol = 1e-12;
+            double zTol = 1e-5;
+
+            bool everForced = false, everMoved = false;
+            for (int f = 0; f < 16; f++)
+            {
+                wall[0] = (double)12 - (double)f;
+                MPC.setSoftBound(ref mpc, in wall);
+
+                var info = MPC.solve(ref mpc, in x, in reference, ref u0);
+                AssertTrue(info.status == MPCStatus.Optimal || info.status == MPCStatus.MaxIterations);
+
+                for (int i = 0; i < nz; i++) xCold[i] = (double)0;
+                var coldInfo = QP.solve(in mpc.H, in mpc.cScratch, in mpc.Arows, in mpc.bScratch, in mpc.senses,
+                                        in mpc.xl, in mpc.xu, ref xCold, out double objCold, 0);
+                AssertTrue(coldInfo.status == QPStatus.Optimal);
+                AssertRelCloseD(info.objective, objCold, objRelTol);
+                for (int i = 0; i < nz; i++) AssertClose(mpc.z[i], xCold[i], zTol);
+
+                if (info.maxSlackViolation > SlackTol()) everForced = true;
+                if (info.activeSetChanges > 0) everMoved = true;
+
+                double x0n = x[0] + x[1];
+                double x1n = x[1] + u0[0];
+                x[0] = x0n; x[1] = x1n;
+            }
+
+            // Non-vacuity, two ways. The working set must MOVE at some frame -- otherwise the run only
+            // ever exercised the steady-state reuse path and says nothing about a rebuild under a
+            // changed RHS. And the wall must at some point overtake the vehicle outright: an exact
+            // penalty drives the violation to zero exactly when the constraint is doing its job, so a
+            // nonzero slack is evidence the bound went somewhere no control could follow.
+            AssertTrue(everMoved);
+            AssertTrue(everForced);
+
+            xCold.Dispose(); wall.Dispose();
+            x.Dispose(); reference.Dispose(); u0.Dispose(); mpc.Dispose(); C.Dispose(); d0.Dispose();
+            A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+        }
+
         // ---- Fail[0..3] diagnostic asserts (same shape as ControlLQRTests.double.cs) ----
         void AssertTrue(bool cond)
         {
@@ -451,6 +613,17 @@ public class doubleMPCTests
             double diff = math.abs(a - b);
             if (!(diff <= precision) && Fail[0] == (double)0) { Fail[0] = (double)1; Fail[1] = a; Fail[2] = b; Fail[3] = diff; }
             Assert.IsTrue(diff <= precision);
+        }
+
+        // Symmetric relative difference, 2|a-b|/(|a|+|b|). Scale-free by construction: no constant
+        // floor, so it cannot silently become an absolute test on small values the way max(x, 1) does.
+        // Both exactly zero is agreement.
+        void AssertRelCloseD(double a, double b, double relTol)
+        {
+            double denom = math.abs(a) + math.abs(b);
+            double rel = denom > 0 ? 2 * math.abs(a - b) / denom : 0;
+            if (!(rel <= relTol) && Fail[0] == (double)0) { Fail[0] = (double)1; Fail[1] = (double)a; Fail[2] = (double)b; Fail[3] = (double)rel; }
+            Assert.IsTrue(rel <= relTol);
         }
 
         void AssertCloseD(double a, double b, double precision)
@@ -525,6 +698,34 @@ public class doubleMPCTests
         Assert.Catch<ArgumentException>(() => MPC.solve(ref mpc, in x0, in badReference, ref u0));
 
         x0.Dispose(); badReference.Dispose(); u0.Dispose(); mpc.Dispose();
+        A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
+    }
+
+    [Test]
+    public void SetSoftBoundThrowsOnBadInput()
+    {
+        var A = new doubleMxN(2, 2, Allocator.Temp); A[0, 0] = 1; A[0, 1] = 1; A[1, 1] = 1;
+        var B = new doubleMxN(2, 1, Allocator.Temp); B[1, 0] = 1;
+        var Q = new doubleMxN(2, 2, Allocator.Temp); Q[0, 0] = 1; Q[1, 1] = 1;
+        var R = new doubleMxN(1, 1, Allocator.Temp); R[0, 0] = 1;
+        var uLo = new doubleN(1, Allocator.Temp, true); uLo[0] = (double)(-1);
+        var uHi = new doubleN(1, Allocator.Temp, true); uHi[0] = (double)1;
+        var C = new doubleMxN(1, 2, Allocator.Temp); C[0, 0] = 1;
+        var d = new doubleN(1, Allocator.Temp, true); d[0] = (double)5;
+
+        var plain = new doubleMPCState(2, 1, 4, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi);
+        var soft = new doubleMPCState(2, 1, 4, Allocator.Temp, in A, in B, in Q, in R, in uLo, in uHi, in C, in d);
+
+        var ok = new doubleN(1, Allocator.Temp, true); ok[0] = (double)3;
+        var badLen = new doubleN(3, Allocator.Temp, true);           // neither k(1) nor N*k(4)
+        var nan = new doubleN(1, Allocator.Temp, true); nan[0] = (double)double.NaN;
+
+        Assert.Catch<ArgumentException>(() => MPC.setSoftBound(ref plain, in ok));      // no soft rows
+        Assert.Catch<ArgumentException>(() => MPC.setSoftBound(ref soft, in badLen));
+        Assert.Catch<ArgumentException>(() => MPC.setSoftBound(ref soft, in nan));
+
+        ok.Dispose(); badLen.Dispose(); nan.Dispose();
+        plain.Dispose(); soft.Dispose(); C.Dispose(); d.Dispose();
         A.Dispose(); B.Dispose(); Q.Dispose(); R.Dispose(); uLo.Dispose(); uHi.Dispose();
     }
 
