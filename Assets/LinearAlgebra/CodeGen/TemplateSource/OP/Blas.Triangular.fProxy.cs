@@ -10,6 +10,20 @@ namespace BULA
     // "solve Ax=b" entry points live on LU/CHO/QR/QRCP. Iterative (Krylov) solvers are on Krylov.
     public static partial class Blas {
 
+        // A triangular factor is usable only if every diagonal it divides by is a real nonzero. Zero
+        // and NaN both fail the magnitude test (NaN fails every comparison); the isfinite covers the
+        // infinities, which would otherwise pass it and drive the solution silently to zero.
+        static bool UsableDiagonal(fProxy d) => math.abs(d) > (fProxy)0 && math.isfinite(d);
+
+        // The substitution can overflow to Inf even with every diagonal usable, so the reported status
+        // is only honest if it also reflects the numbers actually produced. n comparisons against the
+        // solve's own n²/2 multiply-adds.
+        static unsafe bool AllFinite(fProxy* p, int n)
+        {
+            for (int i = 0; i < n; i++) if (!math.isfinite(p[i])) return false;
+            return true;
+        }
+
         // Solve Ux = b for x
         // U may be tall (M_Rows >= N_Cols): only the top N_Cols x N_Cols block is read,
         // which is the R block produced by QR on overdetermined systems.
@@ -42,22 +56,14 @@ namespace BULA
             {
                 fProxy* Ur = Up + (long)r * stride;
 
-                // Zero, NaN and +/-Inf all rejected. !(|d| > 0) covers zero and NaN (NaN fails every
-                // comparison); the isfinite covers the infinities, which would otherwise pass the
-                // magnitude test and drive x[r] silently to zero rather than to anything detectable.
-                if (!(math.abs(Ur[r]) > (fProxy)0) || !math.isfinite(Ur[r])) { ok = false; break; }
+                if (!UsableDiagonal(Ur[r])) { ok = false; break; }
 
                 fProxy sum = UnsafeOP.vecDotRange(Ur, bp, r + 1, n);
                 bp[r] = (bp[r] - sum) / Ur[r];
             }
 
-            // The substitution can still overflow to Inf even with every diagonal nonzero, so the
-            // status is only honest if it reflects the numbers actually produced.
-            for (int r = 0; r < n && ok; r++)
-                if (!math.isfinite(bp[r])) ok = false;
-
             return new DirectSolveInfo {
-                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+                status = ok && AllFinite(bp, n) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
             };
         }
 
@@ -86,17 +92,14 @@ namespace BULA
             {
                 fProxy* Lr = Lp + (long)r * stride;
 
-                if (!(math.abs(Lr[r]) > (fProxy)0) || !math.isfinite(Lr[r])) { ok = false; break; }
+                if (!UsableDiagonal(Lr[r])) { ok = false; break; }
 
                 fProxy sum = UnsafeOP.vecDotRange(Lr, bp, 0, r);
                 bp[r] = (bp[r] - sum) / Lr[r];
             }
 
-            for (int r = 0; r < n && ok; r++)
-                if (!math.isfinite(bp[r])) ok = false;
-
             return new DirectSolveInfo {
-                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+                status = ok && AllFinite(bp, n) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
             };
         }
 
@@ -127,12 +130,8 @@ namespace BULA
                 bp[r] = bp[r] - sum;
             }
 
-            bool ok = true;
-            for (int r = 0; r < n && ok; r++)
-                if (!math.isfinite(bp[r])) ok = false;
-
             return new DirectSolveInfo {
-                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+                status = AllFinite(bp, n) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
             };
         }
 
@@ -158,17 +157,14 @@ namespace BULA
             for (int r = n - 1; r >= 0; r--) {
                 fProxy* Ur = Up + (long)RP[r] * stride;
 
-                if (!(math.abs(Ur[r]) > (fProxy)0) || !math.isfinite(Ur[r])) { ok = false; break; }
+                if (!UsableDiagonal(Ur[r])) { ok = false; break; }
 
                 fProxy sum = UnsafeOP.vecDotRange(Ur, bp, r + 1, n);
                 bp[r] = (bp[r] - sum) / Ur[r];
             }
 
-            for (int r = 0; r < n && ok; r++)
-                if (!math.isfinite(bp[r])) ok = false;
-
             return new DirectSolveInfo {
-                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+                status = ok && AllFinite(bp, n) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
             };
         }
 
@@ -199,6 +195,7 @@ namespace BULA
             int n = U.N_Cols;
             int k = B_to_X.N_Cols;
             fProxy* Xp = B_to_X.Data.Ptr;
+            bool ok = true;
 
             for (int r = n - 1; r >= 0; r--)
             {
@@ -207,12 +204,16 @@ namespace BULA
                 for (int c = r + 1; c < n; c++)
                     UnsafeOP.axpy(Xr, Xp + (long)c * k, -U[r, c], k);
 
+                if (!UsableDiagonal(U[r, r])) { ok = false; break; }
+
                 fProxy inv = (fProxy)1 / U[r, r];
                 for (int j = 0; j < k; j++)
                     Xr[j] *= inv;
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return new DirectSolveInfo {
+                status = ok && AllFinite(Xp, n * k) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // Solve L X = B for X (multi-RHS). See the vector triLower for the non-singular-diagonal
@@ -229,6 +230,7 @@ namespace BULA
             int n = L.M_Rows;
             int k = B_to_X.N_Cols;
             fProxy* Xp = B_to_X.Data.Ptr;
+            bool ok = true;
 
             for (int r = 0; r < n; r++)
             {
@@ -237,12 +239,16 @@ namespace BULA
                 for (int c = 0; c < r; c++)
                     UnsafeOP.axpy(Xr, Xp + (long)c * k, -L[r, c], k);
 
+                if (!UsableDiagonal(L[r, r])) { ok = false; break; }
+
                 fProxy inv = (fProxy)1 / L[r, r];
                 for (int j = 0; j < k; j++)
                     Xr[j] *= inv;
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return new DirectSolveInfo {
+                status = ok && AllFinite(Xp, n * k) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // Solve L Y = B (unit-lower, row-pivoted), multi-RHS — the compact-LU forward step. B_to_X rows
@@ -268,7 +274,9 @@ namespace BULA
                 // unit diagonal: no scale
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return new DirectSolveInfo {
+                status = AllFinite(Xp, n * k) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // Solve U X = Y (row-pivoted), multi-RHS — the compact-LU back step.
@@ -284,6 +292,7 @@ namespace BULA
             int n = U.N_Cols;
             int k = B_to_X.N_Cols;
             fProxy* Xp = B_to_X.Data.Ptr;
+            bool ok = true;
 
             for (int r = n - 1; r >= 0; r--)
             {
@@ -291,12 +300,16 @@ namespace BULA
                 for (int c = r + 1; c < n; c++)
                     UnsafeOP.axpy(Xr, Xp + (long)c * k, -U[RP[r], c], k);
 
+                if (!UsableDiagonal(U[RP[r], r])) { ok = false; break; }
+
                 fProxy inv = (fProxy)1 / U[RP[r], r];
                 for (int j = 0; j < k; j++)
                     Xr[j] *= inv;
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return new DirectSolveInfo {
+                status = ok && AllFinite(Xp, n * k) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // ---- transposed compact-LU solves: Uᵀw=v then Lᵀw=(that) -- the getrs(trans='T') triangular
@@ -324,10 +337,13 @@ namespace BULA
             int stride = U.N_Cols;
             fProxy* Up = U.Data.Ptr;
             fProxy* bp = b_to_x.Data.Ptr;
+            bool ok = true;
 
             for (int r = 0; r < n; r++)
             {
                 fProxy* Ur = Up + (long)RP[r] * stride;
+
+                if (!UsableDiagonal(Ur[r])) { ok = false; break; }
                 bp[r] = bp[r] / Ur[r];
 
                 int len = n - (r + 1);
@@ -335,7 +351,9 @@ namespace BULA
                     UnsafeOP.axpy(bp + (r + 1), Ur + (r + 1), -bp[r], len);
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return new DirectSolveInfo {
+                status = ok && AllFinite(bp, n) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // Solve Lᵀw = z in place (backward step; unit diagonal, no divide). Same right-looking
@@ -365,7 +383,9 @@ namespace BULA
                 }
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return new DirectSolveInfo {
+                status = AllFinite(bp, n) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // ---- transposed compact-LU solves, multi-RHS (TRSM) forms: same right-looking rationale as
@@ -387,10 +407,14 @@ namespace BULA
             int n = U.N_Cols;
             int k = B_to_X.N_Cols;
             fProxy* Xp = B_to_X.Data.Ptr;
+            bool ok = true;
 
             for (int r = 0; r < n; r++)
             {
                 fProxy* Xr = Xp + (long)r * k;
+
+                if (!UsableDiagonal(U[RP[r], r])) { ok = false; break; }
+
                 fProxy inv = (fProxy)1 / U[RP[r], r];
                 for (int j = 0; j < k; j++)
                     Xr[j] *= inv;
@@ -399,7 +423,9 @@ namespace BULA
                     UnsafeOP.axpy(Xp + (long)c * k, Xr, -U[RP[r], c], k);
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return new DirectSolveInfo {
+                status = ok && AllFinite(Xp, n * k) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // Solve Lᵀ W = Z in place (backward step, multi-RHS; unit diagonal, no scale).
@@ -425,7 +451,9 @@ namespace BULA
                     UnsafeOP.axpy(Xp + (long)c * k, Xr, -L[RP[r], c], k);
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            return new DirectSolveInfo {
+                status = AllFinite(Xp, n * k) ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
     }
 }

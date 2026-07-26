@@ -536,7 +536,10 @@ namespace BULA
             // Step 1: forward-solve L y = b.  y starts as a copy of b (triLower is in-place).
             var y = new fProxyN(m, Allocator.Temp, false);
             y.CopyFrom(in b);
-            Blas.triLower(ref L, ref y);
+            // Status forwarded, not discarded: LQ is UN-PIVOTED, so like QR it has no rank
+            // detection of its own -- a singular L is only caught here.
+            var triInfo = Blas.triLower(ref L, ref y);
+            if (triInfo.status != DirectSolveStatus.Success) return triInfo;
 
             // Step 2: x = Qᵀ y, applied directly from W's reflectors (no dense Q).
             applyQtFromReflectors(ref W, ref y, ref x);
@@ -585,7 +588,10 @@ namespace BULA
             // Forward-solve L y = b, then x = Qᵀ y straight from W's reflectors (no dense Q).
             var y = ws.y;
             y.CopyFrom(in b);
-            Blas.triLower(ref L, ref y);
+            // Status forwarded, not discarded: LQ is UN-PIVOTED, so like QR it has no rank
+            // detection of its own -- a singular L is only caught here.
+            var triInfo = Blas.triLower(ref L, ref y);
+            if (triInfo.status != DirectSolveStatus.Success) return triInfo;
             applyQtFromReflectors(ref W, ref y, ref x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -628,7 +634,10 @@ namespace BULA
             // Forward-solve L y = b (y starts as a copy of b; triLower is in-place).
             var y = new fProxyN(m, Allocator.Temp, false);
             y.CopyFrom(in b);
-            Blas.triLower(ref L, ref y);
+            // Status forwarded, not discarded: LQ is UN-PIVOTED, so like QR it has no rank
+            // detection of its own -- a singular L is only caught here.
+            var triInfo = Blas.triLower(ref L, ref y);
+            if (triInfo.status != DirectSolveStatus.Success) return triInfo;
 
             // x = Qᵀ y, applied directly from A's reflectors.
             applyQtFromReflectors(ref A, ref y, ref x);
@@ -669,7 +678,10 @@ namespace BULA
 
             var y = ws.y;
             y.CopyFrom(in b);
-            Blas.triLower(ref L, ref y);
+            // Status forwarded, not discarded: LQ is UN-PIVOTED, so like QR it has no rank
+            // detection of its own -- a singular L is only caught here.
+            var triInfo = Blas.triLower(ref L, ref y);
+            if (triInfo.status != DirectSolveStatus.Success) return triInfo;
             applyQtFromReflectors(ref A, ref y, ref x);
 
             return new DirectSolveInfo { status = DirectSolveStatus.Success };
@@ -763,7 +775,10 @@ namespace BULA
             // Step 1: forward-solve L Y = B (Y starts as a copy of B; triLower is in-place).
             var Y = new fProxyMxN(m, k, Allocator.Temp, false);
             Y.CopyFrom(in B);
-            Blas.triLower(ref L, ref Y);
+            // Status forwarded, not discarded: LQ is UN-PIVOTED, so like QR it has no rank
+            // detection of its own -- a singular L is only caught here.
+            var triInfo = Blas.triLower(ref L, ref Y);
+            if (triInfo.status != DirectSolveStatus.Success) return triInfo;
 
             // Step 2: X = Qᵀ Y, applied directly from W's reflectors (no dense Q).
             applyQtFromReflectors(ref W, ref Y, ref X);
@@ -813,7 +828,10 @@ namespace BULA
             // Forward-solve L Y = B (Y starts as a copy of B; triLower is in-place).
             var Y = new fProxyMxN(m, k, Allocator.Temp, false);
             Y.CopyFrom(in B);
-            Blas.triLower(ref L, ref Y);
+            // Status forwarded, not discarded: LQ is UN-PIVOTED, so like QR it has no rank
+            // detection of its own -- a singular L is only caught here.
+            var triInfo = Blas.triLower(ref L, ref Y);
+            if (triInfo.status != DirectSolveStatus.Success) return triInfo;
 
             // X = Qᵀ Y, applied directly from A's reflectors.
             applyQtFromReflectors(ref A, ref Y, ref X);
