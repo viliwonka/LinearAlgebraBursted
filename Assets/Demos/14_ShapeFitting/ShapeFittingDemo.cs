@@ -1,5 +1,7 @@
 using BULA;
+using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 using Random = Unity.Mathematics.Random;
@@ -40,6 +42,7 @@ namespace LinearAlgebraDemos
 
         NativeArray<float3> pts3;
         NativeArray<float2> pts2;
+        NativeArray<FitOut> result;
         int count;
         uint frame;
 
@@ -67,12 +70,14 @@ namespace LinearAlgebraDemos
             count = pointCount;
             pts3 = new NativeArray<float3>(count, Allocator.Persistent);
             pts2 = new NativeArray<float2>(count, Allocator.Persistent);
+            result = new NativeArray<FitOut>(1, Allocator.Persistent);
         }
 
         void Release()
         {
             if (pts3.IsCreated) pts3.Dispose();
             if (pts2.IsCreated) pts2.Dispose();
+            if (result.IsCreated) result.Dispose();
         }
 
         void Update()
@@ -168,119 +173,170 @@ namespace LinearAlgebraDemos
 
         void Solve()
         {
-            ok = false; inliers = 0;
+            var job = new SolveJob
+            {
+                Pts3 = pts3, Pts2 = pts2, Out = result,
+                Is2D = Is2D, ModelSel = model, SolverSel = solver, MetricSel = metric,
+                Threshold = threshold, LossScale = lossScale,
+            };
+            job.Run();
 
-            if (Is2D)
-            {
-                if (model == Model.Circle) { fCircle = default; ok = Solve2(ref fCircle); }
-                else { fLine2 = default; ok = Solve2(ref fLine2); }
-            }
-            else
-            {
-                switch (model)
-                {
-                    case Model.Sphere:   fSphere = default; ok = Solve3(ref fSphere); break;
-                    case Model.Line:     fLine3 = default;  ok = Solve3(ref fLine3);  break;
-                    case Model.Cylinder: ok = SolveCylinder(); break;
-                    case Model.Torus:    ok = SolveTorus();    break;
-                    default:             fPlane = default;  ok = Solve3(ref fPlane);  break;
-                }
-            }
+            var o = result[0];
+            ok = o.Ok != 0;
+            inliers = o.Inliers;
+            fPlane = o.Plane; fSphere = o.Sphere; fLine3 = o.Line3;
+            fCyl = o.Cyl; fTorus = o.Torus; fLine2 = o.Line2; fCircle = o.Circle;
 
             status = $"{dimension} {truth} -> {model} via {solver}/{metric}   " +
                      (ok ? $"ok, inliers {inliers}/{count}" : "FAILED");
         }
 
-        // Cylinder and torus have no closed-form weighted fit, so they are NLS-only here. The
-        // interfaces already say that; this just routes accordingly instead of offering a choice
-        // that would not compile.
-        bool SolveCylinder()
+        // Every shape the job can produce, so one blittable struct carries the result out whichever
+        // branch ran. Only the one matching ModelSel is populated.
+        public struct FitOut
         {
-            fCyl = new Fit.floatCylinder { Axis = new float3(0f, 0f, 1f), Radius = 1.5f };
-            bool r = RunNls(ref fCyl);
-            inliers = CountInliers(in fCyl);
-            return r;
+            public Fit.floatPlane Plane;
+            public Fit.floatSphere3 Sphere;
+            public Fit.floatLine3 Line3;
+            public Fit.floatCylinder Cyl;
+            public Fit.floatTorus Torus;
+            public Fit.floatLine2 Line2;
+            public Fit.floatCircle Circle;
+            public int Inliers;
+            public byte Ok;
         }
 
-        bool SolveTorus()
+        // ONE job that switches on the enums, not a generic job per combination: 6 models x 5 solvers
+        // x 5 metrics would ask Burst to compile ~150 variants of the same code. Drawing stays on the
+        // managed side -- Debug.DrawLine is an engine ICall Burst cannot emit (see Draw's own header).
+        [BurstCompile(CompileSynchronously = true)]
+        public struct SolveJob : IJob
         {
-            fTorus = new Fit.floatTorus
-            {
-                Axis = new float3(0f, 0f, 1f), MajorRadius = 2.5f, MinorRadius = 0.8f,
-            };
-            bool r = RunNls(ref fTorus);
-            inliers = CountInliers(in fTorus);
-            return r;
-        }
+            // Not marked [ReadOnly]: this is a single IJob, so the attribute buys no scheduling here,
+            // and read-only-ness survives NativeArray.Reinterpret -- which is how a fit that views the
+            // cloud as a matrix trips the safety system at runtime, where no test would catch it.
+            public NativeArray<float3> Pts3;
+            public NativeArray<float2> Pts2;
+            public NativeArray<FitOut> Out;
 
-        bool RunNls<T>(ref T m) where T : struct, IfloatParametric3
-        {
-            switch (metric)
+            public bool Is2D;
+            public Model ModelSel;
+            public Solver SolverSel;
+            public Metric MetricSel;
+            public float Threshold;
+            public float LossScale;
+
+            public void Execute()
             {
-                case Metric.L1:     { var l = new floatL1Loss(lossScale);     return Fit.nls(pts3, ref m, in l); }
-                case Metric.Huber:  { var l = new floatHuberLoss(lossScale);  return Fit.nls(pts3, ref m, in l); }
-                case Metric.Cauchy: { var l = new floatCauchyLoss(lossScale); return Fit.nls(pts3, ref m, in l); }
-                case Metric.Tukey:  { var l = new floatTukeyLoss(lossScale);  return Fit.nls(pts3, ref m, in l); }
-                default:            { var l = new floatL2Loss();              return Fit.nls(pts3, ref m, in l); }
+                var o = default(FitOut);
+                bool r;
+
+                if (Is2D)
+                {
+                    if (ModelSel == Model.Circle) r = Solve2(ref o.Circle, out o.Inliers);
+                    else                          r = Solve2(ref o.Line2,  out o.Inliers);
+                }
+                else
+                {
+                    switch (ModelSel)
+                    {
+                        case Model.Sphere: r = Solve3(ref o.Sphere, out o.Inliers); break;
+                        case Model.Line:   r = Solve3(ref o.Line3,  out o.Inliers); break;
+
+                        // Cylinder and torus have no closed-form weighted fit, so they are NLS-only.
+                        // The interfaces already say so; this routes accordingly rather than offering
+                        // a choice that would not compile. Both need a seed -- these solves are local.
+                        case Model.Cylinder:
+                            o.Cyl = new Fit.floatCylinder { Axis = new float3(0f, 0f, 1f), Radius = 1.5f };
+                            r = RunNls(ref o.Cyl);
+                            o.Inliers = CountInliers(in o.Cyl);
+                            break;
+
+                        case Model.Torus:
+                            o.Torus = new Fit.floatTorus
+                            {
+                                Axis = new float3(0f, 0f, 1f), MajorRadius = 2.5f, MinorRadius = 0.8f,
+                            };
+                            r = RunNls(ref o.Torus);
+                            o.Inliers = CountInliers(in o.Torus);
+                            break;
+
+                        default: r = Solve3(ref o.Plane, out o.Inliers); break;
+                    }
+                }
+
+                o.Ok = r ? (byte)1 : (byte)0;
+                Out[0] = o;
             }
-        }
 
-        bool Solve3<T>(ref T m) where T : struct, IfloatWeighted3
-        {
-            bool r;
-            switch (solver)
+            bool RunNls<T>(ref T m) where T : struct, IfloatParametric3
             {
-                case Solver.Ransac:   { var i = Fit.ransac(pts3, ref m, threshold);   r = i; inliers = i.inliers; break; }
-                case Solver.RansacLo: { var i = Fit.ransacLo(pts3, ref m, threshold); r = i; inliers = i.inliers; break; }
-                case Solver.Magsac:   { var i = Fit.magsac(pts3, ref m, threshold * 3f); r = i; inliers = i.inliers; break; }
-                default:              { r = RunIrls3(ref m); inliers = CountInliers(in m); break; }
-            }
-            return r;
-        }
-
-        bool RunIrls3<T>(ref T m) where T : struct, IfloatWeighted3
-        {
-            switch (metric)
-            {
-                case Metric.L1:     { var l = new floatL1Loss(lossScale);     return Fit.irls(pts3, ref m, in l); }
-                case Metric.Huber:  { var l = new floatHuberLoss(lossScale);  return Fit.irls(pts3, ref m, in l); }
-                case Metric.Cauchy: { var l = new floatCauchyLoss(lossScale); return Fit.irls(pts3, ref m, in l); }
-                case Metric.Tukey:  { var l = new floatTukeyLoss(lossScale);  return Fit.irls(pts3, ref m, in l); }
-                default:            { var l = new floatL2Loss();              return Fit.irls(pts3, ref m, in l); }
-            }
-        }
-
-        bool Solve2<T>(ref T m) where T : struct, IfloatWeighted2
-        {
-            // The consensus estimators are 3D-only for now; 2D gets RANSAC or IRLS.
-            if (solver == Solver.Ransac || solver == Solver.RansacLo || solver == Solver.Magsac)
-            {
-                var i = Fit.ransac(pts2, ref m, threshold);
-                inliers = i.inliers;
-                return i;
+                switch (MetricSel)
+                {
+                    case Metric.L1:     { var l = new floatL1Loss(LossScale);     return Fit.nls(Pts3, ref m, in l); }
+                    case Metric.Huber:  { var l = new floatHuberLoss(LossScale);  return Fit.nls(Pts3, ref m, in l); }
+                    case Metric.Cauchy: { var l = new floatCauchyLoss(LossScale); return Fit.nls(Pts3, ref m, in l); }
+                    case Metric.Tukey:  { var l = new floatTukeyLoss(LossScale);  return Fit.nls(Pts3, ref m, in l); }
+                    default:            { var l = new floatL2Loss();              return Fit.nls(Pts3, ref m, in l); }
+                }
             }
 
-            bool r;
-            switch (metric)
+            bool Solve3<T>(ref T m, out int inliers) where T : struct, IfloatWeighted3
             {
-                case Metric.L1:     { var l = new floatL1Loss(lossScale);     r = Fit.irls(pts2, ref m, in l); break; }
-                case Metric.Huber:  { var l = new floatHuberLoss(lossScale);  r = Fit.irls(pts2, ref m, in l); break; }
-                case Metric.Cauchy: { var l = new floatCauchyLoss(lossScale); r = Fit.irls(pts2, ref m, in l); break; }
-                case Metric.Tukey:  { var l = new floatTukeyLoss(lossScale);  r = Fit.irls(pts2, ref m, in l); break; }
-                default:            { var l = new floatL2Loss();              r = Fit.irls(pts2, ref m, in l); break; }
+                switch (SolverSel)
+                {
+                    case Solver.Ransac:   { var i = Fit.ransac(Pts3, ref m, Threshold);      inliers = i.inliers; return i; }
+                    case Solver.RansacLo: { var i = Fit.ransacLo(Pts3, ref m, Threshold);    inliers = i.inliers; return i; }
+                    case Solver.Magsac:   { var i = Fit.magsac(Pts3, ref m, Threshold * 3f); inliers = i.inliers; return i; }
+                    default:              { bool r = RunIrls3(ref m); inliers = CountInliers(in m); return r; }
+                }
             }
 
-            int c = 0;
-            for (int i = 0; i < count; i++) if (m.Distance(pts2[i]) <= threshold) c++;
-            inliers = c;
-            return r;
-        }
+            bool RunIrls3<T>(ref T m) where T : struct, IfloatWeighted3
+            {
+                switch (MetricSel)
+                {
+                    case Metric.L1:     { var l = new floatL1Loss(LossScale);     return Fit.irls(Pts3, ref m, in l); }
+                    case Metric.Huber:  { var l = new floatHuberLoss(LossScale);  return Fit.irls(Pts3, ref m, in l); }
+                    case Metric.Cauchy: { var l = new floatCauchyLoss(LossScale); return Fit.irls(Pts3, ref m, in l); }
+                    case Metric.Tukey:  { var l = new floatTukeyLoss(LossScale);  return Fit.irls(Pts3, ref m, in l); }
+                    default:            { var l = new floatL2Loss();              return Fit.irls(Pts3, ref m, in l); }
+                }
+            }
 
-        int CountInliers<T>(in T m) where T : struct, IfloatShape3
-        {
-            int c = 0;
-            for (int i = 0; i < count; i++) if (m.Distance(pts3[i]) <= threshold) c++;
-            return c;
+            bool Solve2<T>(ref T m, out int inliers) where T : struct, IfloatWeighted2
+            {
+                // The consensus estimators are 3D-only for now; 2D gets RANSAC or IRLS.
+                if (SolverSel == Solver.Ransac || SolverSel == Solver.RansacLo || SolverSel == Solver.Magsac)
+                {
+                    var i = Fit.ransac(Pts2, ref m, Threshold);
+                    inliers = i.inliers;
+                    return i;
+                }
+
+                bool r;
+                switch (MetricSel)
+                {
+                    case Metric.L1:     { var l = new floatL1Loss(LossScale);     r = Fit.irls(Pts2, ref m, in l); break; }
+                    case Metric.Huber:  { var l = new floatHuberLoss(LossScale);  r = Fit.irls(Pts2, ref m, in l); break; }
+                    case Metric.Cauchy: { var l = new floatCauchyLoss(LossScale); r = Fit.irls(Pts2, ref m, in l); break; }
+                    case Metric.Tukey:  { var l = new floatTukeyLoss(LossScale);  r = Fit.irls(Pts2, ref m, in l); break; }
+                    default:            { var l = new floatL2Loss();              r = Fit.irls(Pts2, ref m, in l); break; }
+                }
+
+                int c = 0;
+                for (int i = 0; i < Pts2.Length; i++) if (m.Distance(Pts2[i]) <= Threshold) c++;
+                inliers = c;
+                return r;
+            }
+
+            int CountInliers<T>(in T m) where T : struct, IfloatShape3
+            {
+                var s = m;
+                int c = 0;
+                for (int i = 0; i < Pts3.Length; i++) if (s.Distance(Pts3[i]) <= Threshold) c++;
+                return c;
+            }
         }
 
         // ---- draw ----------------------------------------------------------------------------------
