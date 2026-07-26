@@ -12,7 +12,7 @@ namespace LinearAlgebraDemos.Tests
     /// Headless smoke tests for <see cref="HoverTankMPCDemo"/>. What is assertable without a scene:
     /// the shape contract of <see cref="TerrainField"/>, the <see cref="GroundEffect"/> curve and its
     /// clamp, the stability of the hover model <see cref="HoverTankMPCStepJob.BuildHoverModel"/>
-    /// builds, the demo's own step job run against synthetic corner ranges, and the 6x12
+    /// builds, the demo's own step job run against a synthetic hover state, and the 6x12
     /// <see cref="GimbalAllocation"/> driven on its own. Nothing here touches Physics, Rigidbody or
     /// raycasts.
     ///
@@ -106,8 +106,8 @@ namespace LinearAlgebraDemos.Tests
         }
 
         /// <summary>
-        /// Drives <see cref="HoverTankMPCStepJob"/> for 300 fixed steps against corner ranges frozen
-        /// at "level height, rolled right-side-down", so the demanded wrench is constant and the
+        /// Drives <see cref="HoverTankMPCStepJob"/> for 300 fixed steps against a hover state frozen
+        /// at "on height, rolled right-side-down", so the demanded wrench is constant and the
         /// allocation has something definite to converge to. Checks the allocation's own contract —
         /// optimal solves, controls inside the rig's absolute ranges and inside its per-step rate
         /// limits — and then that the converged wrench actually carries the hull's weight and rolls
@@ -118,22 +118,15 @@ namespace LinearAlgebraDemos.Tests
         {
             const float dt = 1f / 60f;
             const float mass = 1500f, gravity = 9.81f;
-            const float rideHeight = 2f, rollInertia = 2100f, pitchInertia = 4600f;
+            const float rollInertia = 2100f, pitchInertia = 4600f;
             const float halfWidth = 2f, halfLength = 3f;
             const int steps = 300;
 
-            float cornerDX = halfWidth * 0.9f, cornerDZ = halfLength * 0.9f;
             GimbalSettings settings = GimbalSettings.Default;
 
-            var cornerHeights = new NativeArray<float>(4, Allocator.TempJob);
-            var prevCorner = new NativeArray<float>(4, Allocator.TempJob);
-            // Mean 2 m (no height error) but the right pair reads 0.72 m closer than the left pair,
-            // which the estimate reads as roll = -0.2 rad: right side down.
-            cornerHeights[0] = 2.36f; cornerHeights[1] = 1.64f;
-            cornerHeights[2] = 2.36f; cornerHeights[3] = 1.64f;
-            for (int i = 0; i < 4; i++) prevCorner[i] = cornerHeights[i];
-
             var hoverState = new NativeArray<float>(6, Allocator.TempJob);
+            // On height, at rest, rolled -0.2 rad: right side down.
+            hoverState[2] = -0.2f;
             var hoverOut = new NativeArray<float>(4, Allocator.TempJob);
             var controls = new NativeArray<float>(GimbalAllocation.ControlCount, Allocator.TempJob);
             var allocOut = new NativeArray<QPInfo>(1, Allocator.TempJob);
@@ -153,13 +146,12 @@ namespace LinearAlgebraDemos.Tests
 
             var job = new HoverTankMPCStepJob
             {
-                CornerHeights = cornerHeights, PrevCornerHeights = prevCorner,
                 HoverState = hoverState,
                 HoverK = hoverK, HoverLqrState = hoverLqr, HoverOut = hoverOut,
                 Mass = mass, RollInertia = rollInertia, PitchInertia = pitchInertia, Gravity = gravity,
                 QHeight = 40f, QHeightRate = 6f, QTilt = 90f, QTiltRate = 8f,
                 RThrust = 0.02f, RTorque = 0.4f,
-                TargetRideHeight = rideHeight, CornerDX = cornerDX, CornerDZ = cornerDZ, Dt = dt,
+                Dt = dt,
 
                 Controls = controls, AllocOut = allocOut, WrenchOut = wrenchOut,
                 Settings = settings, Health = new float4(1f),
@@ -175,7 +167,7 @@ namespace LinearAlgebraDemos.Tests
                 IdleLinearGain = 1500f, IdleAngularGain = 6500f,
                 ForwardSpeed = 0f, LateralSpeed = 0f, YawRate = 0f, TiltCos = 1f,
                 // Radius 0 turns ground effect off, so this stays a test of the nominal rig.
-                NozzleHeights = new float4(rideHeight), NozzleRadius = 0f, GroundOut = groundOut,
+                NozzleHeights = new float4(2f), NozzleRadius = 0f, GroundOut = groundOut,
             };
 
             var before = new float[GimbalAllocation.ControlCount];
@@ -216,7 +208,7 @@ namespace LinearAlgebraDemos.Tests
             float achievedLift = wrenchOut[7], achievedRoll = wrenchOut[11];
 
             Assert.IsTrue(math.abs(hoverState[0]) < 1e-5f,
-                $"height error should be zero for these ranges, got {hoverState[0]}");
+                $"the step job must not write the hover state it was handed, got {hoverState[0]}");
             Assert.IsTrue(demandedRoll > 0f,
                 $"a right-side-down hull should be commanded to roll right side up, got {demandedRoll} Nm");
 
@@ -225,7 +217,6 @@ namespace LinearAlgebraDemos.Tests
             Assert.IsTrue(achievedRoll > 0.75f * demandedRoll && achievedRoll < 1.25f * demandedRoll,
                 $"roll torque {achievedRoll} Nm does not track the demanded {demandedRoll} Nm");
 
-            cornerHeights.Dispose(); prevCorner.Dispose();
             hoverState.Dispose(); hoverOut.Dispose();
             controls.Dispose(); allocOut.Dispose(); wrenchOut.Dispose(); groundOut.Dispose();
             hoverK.Dispose(); job.HoverLqrState.Dispose();

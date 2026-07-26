@@ -19,10 +19,19 @@ namespace LinearAlgebraDemos
     /// well · SPACE brakes forward speed, sideways speed and yaw rate. Hands off, weak idle damping
     /// settles the tank instead of letting it free-float.
     ///
+    /// THE CONTROLLER NEVER READS THE RIGID BODY. Everything the control law is handed comes out of
+    /// <see cref="TankEstimatorJob"/>: a 15-state strapdown EKF (position, velocity, attitude, and
+    /// both IMU biases) driven by a simulated IMU, magnetometer and position beacon, plus a ground
+    /// plane fitted to a 25-beam lidar. Truth is read in exactly two places — the sensor simulation,
+    /// which has to be told what it is looking at, and the panel, which plots how far the estimate has
+    /// drifted from it. The rays themselves leave the TRUE hull pose because a ranger is bolted to the
+    /// hull; what comes back is a range in the sensor's own frame, and turning that into anything
+    /// world-referenced uses the estimate.
+    ///
     /// Every axis reaches the thrusters through one control-allocation solve:
     ///
-    /// 1. A 6-state discrete LQR (height error, vertical velocity, roll, roll rate, pitch, pitch rate)
-    ///    sensed from 4 corner-down raycasts, producing vertical/roll/pitch acceleration commands.
+    /// 1. A 6-state discrete LQR (ride-height error, closing rate, roll, roll rate, pitch, pitch rate)
+    ///    read off the estimate, producing vertical/roll/pitch acceleration commands.
     /// 2. A control-allocation QP that turns those commands plus the driver's forward/strafe/yaw
     ///    demand — and the braking and idle-damping terms, which are wrench demands like everything
     ///    else rather than forces written onto the rigid body — into the 12 thruster controls, under
@@ -37,14 +46,15 @@ namespace LinearAlgebraDemos
     /// hover model's vertical input column, which softens the hover gain slightly near the ground; see
     /// <see cref="HoverTankMPCStepJob.Execute"/> for why that is a choice and not a measurement.
     ///
-    /// The corner raycasts are the only ground sense, and the attitude estimate is built from the
-    /// DIFFERENCES between them, so it cannot separate hull tilt from terrain slope — see
-    /// <see cref="HoverTankMPCStepJob.Execute"/> for what that costs over sloping ground.
+    /// HULL TILT AND TERRAIN SLOPE ARE SEPARATE QUANTITIES HERE, and the panel prints both. The
+    /// attitude the hover loop regulates comes from gravity and the magnetic field, so the tank is
+    /// held LEVEL across a hillside; the slope comes from the lidar's fitted plane, in hull axes, and
+    /// only says which way the ground under it is running. A ride-height-only estimate cannot tell the
+    /// two apart and levels the hull to the ground instead.
     ///
     /// The four THRUST MOUNTS sit on the side flanks at hull mid-height (x = ±halfWidth, y = 0,
-    /// z = ±halfLength), which is a different set of points from the four SENSE CORNERS on the bottom
-    /// face that the raycasts fire from. A mount at y = 0 turns forward thrust into pure yaw, with no
-    /// pitch moment for the hover loop to fight.
+    /// z = ±halfLength). A mount at y = 0 turns forward thrust into pure yaw, with no pitch moment for
+    /// the hover loop to fight.
     ///
     /// Self-assembles terrain, hull and a chase camera in <see cref="Start"/> (sceneless, like the
     /// other demos), including one <see cref="ParticleSystem"/> plume per nozzle.
@@ -74,6 +84,11 @@ namespace LinearAlgebraDemos
 
         [Header("Gimballed thrusters (allocated by QP)")]
         public GimbalSettings thrusters = GimbalSettings.Default;
+
+        [Header("Sensors and state estimation")]
+        public TankSensorSpec sensors = TankSensorSpec.Default;
+        [Tooltip("Seed of the sensor noise stream. A fixed seed makes a play session repeatable.")]
+        public uint sensorSeed = 0x5E45E1u;
 
         [Header("Ground effect")]
         [Tooltip("Off makes every thruster deliver exactly what it was commanded at any height, which is what the rig would feel with no ground under it.")]
@@ -113,8 +128,15 @@ namespace LinearAlgebraDemos
         /// </summary>
         const float NozzleExitDrop = 0.7f;
 
+        /// <summary>Bias random-walk driving noise, m/s³ and rad/s² — how fast the filter lets the two
+        /// IMU biases wander, which is what makes them learnable at all.</summary>
+        const float AccelBiasWalk = 0.06f, GyroBiasWalk = 0.004f;
+
+        /// <summary>Samples of estimate error kept for the panel's trace — 220 fixed steps.</summary>
+        const int TraceLength = 220;
+
         static readonly string[] MountNames = { "FL", "FR", "BL", "BR" };
-        static readonly Rect PanelRect = new Rect(10, 10, 560, 634);
+        static readonly Rect PanelRect = new Rect(10, 10, 580, 806);
 
         // self-assembled scene objects (Start)
         GameObject groundGO, hullGO, hullVisualGO;
@@ -124,28 +146,22 @@ namespace LinearAlgebraDemos
         Texture2D plumeTexture;
         Camera chaseCam;
         Rigidbody rb;
-        Vector3[] cornerLocal;     // FL, FR, BL, BR sense points on the bottom face
         Vector3[] mountLocal;      // FL, FR, BL, BR thrust mounts on the side flanks
-        float cornerDX, cornerDZ;  // horizontal sense-corner offsets, shared with the attitude estimate
         float4 mountX, mountY, mountZ;
         float mountArm;            // lever arm the torque residual scale is measured against
         float4 thrusterHealth = new float4(1f);
         Vector3 spawnPosition;
         float lookX;               // mouse X accumulated since the last fixed step
         bool mouseCaptured = true; // driving mode; ESC releases the cursor to the panel
-        bool4 cornerReturn;        // whether each corner ray found ground this step
         float4 nozzleHeights;      // each nozzle exit's range to the ground, metres
         bool4 nozzleReturn;        // whether each nozzle ray found ground this step
-        // last step's inputs and measured rates, cached so the readout can name the axis owner
-        float lastSteer, lastStrafe, lastForwardSpeed, lastLateralSpeed, lastYawRate;
+        float lastSteer, lastStrafe;
         bool lastBrake;
 
         // hover loop buffers (persistent — never allocated inside the job)
         floatMxN hoverK;
         floatLQRState hoverLqr;
-        NativeArray<float> cornerHeights;
-        NativeArray<float> prevCornerHeights;
-        NativeArray<float> hoverState;    // [height err, height rate, roll, roll rate, pitch, pitch rate]
+        NativeArray<float> hoverState;    // [height err, closing rate, roll, roll rate, pitch, pitch rate]
         NativeArray<float> hoverOut;      // [0] iters [1] converged [2] residual [3] rank-deficient
 
         // allocation buffers
@@ -154,8 +170,35 @@ namespace LinearAlgebraDemos
         NativeArray<float> wrenchOut;     // 6 demanded then 6 achieved (N, N*m)
         NativeArray<float> groundOut;     // per-nozzle thrust augmentation this step
 
-        bool hoverDivergedLogged, allocFailedLogged;
-        float frameMs;
+        // sensing and estimation buffers (persistent)
+        NativeArray<float3> lidarDirs, proxDirs, proxOrigins;
+        NativeArray<float> lidarTrue, lidarSensed, proxTrue, proxSensed;
+        NativeArray<TankEstimate> estimateOut;
+        NativeArray<GroundPlane> groundHold;
+        NativeArray<KFInfo> kfOut;
+        NativeArray<int> gpsAge;
+        floatKFState kf;
+        floatMxN kfQ, kfRMag, kfRGps;
+        TankSensorNoise noise;
+        float3 lidarOrigin;
+        float3 trueAccelBias, trueGyroBias;
+        int stepCount;
+
+        // truth, captured once per fixed step for the sensor simulation and the error trace
+        TankTruth truth;
+        Vector3 prevVelocity;
+        TankEstimate estimate;
+
+        // error trace (UI only — this is the one place estimate and truth are compared)
+        readonly float[] traceHoriz = new float[TraceLength];
+        readonly float[] traceVert = new float[TraceLength];
+        readonly bool[] traceFix = new bool[TraceLength];
+        int traceHead;
+        float3 posError, attError;
+        float clearanceError, trueSlopeDeg;
+
+        bool hoverDivergedLogged, allocFailedLogged, estimatorFailedLogged;
+        float estMs, ctrlMs;
 
         void Start()
         {
@@ -163,8 +206,6 @@ namespace LinearAlgebraDemos
 
             hoverK = new floatMxN(3, 6, Allocator.Persistent);
             hoverLqr = new floatLQRState(6, Allocator.Persistent);
-            cornerHeights = new NativeArray<float>(4, Allocator.Persistent);
-            prevCornerHeights = new NativeArray<float>(4, Allocator.Persistent);
             hoverState = new NativeArray<float>(6, Allocator.Persistent);
             hoverOut = new NativeArray<float>(4, Allocator.Persistent);
 
@@ -172,16 +213,38 @@ namespace LinearAlgebraDemos
             allocOut = new NativeArray<QPInfo>(1, Allocator.Persistent);
             wrenchOut = new NativeArray<float>(2 * GimbalAllocation.WrenchRows, Allocator.Persistent);
             groundOut = new NativeArray<float>(GimbalAllocation.Thrusters, Allocator.Persistent);
-
-            // Seed both height buffers at the setpoint: a corner that has never had a return still has
-            // to hand the estimate something, and the setpoint is the one value that commands nothing.
             for (int i = 0; i < 4; i++)
-            {
-                cornerHeights[i] = targetRideHeight;
-                prevCornerHeights[i] = targetRideHeight;
                 groundOut[i] = 1f;   // out of ground effect until the first step measures otherwise
-            }
             nozzleHeights = new float4(rayLength);
+
+            lidarDirs = new NativeArray<float3>(LidarGrid.Rays, Allocator.Persistent);
+            lidarTrue = new NativeArray<float>(LidarGrid.Rays, Allocator.Persistent);
+            lidarSensed = new NativeArray<float>(LidarGrid.Rays, Allocator.Persistent);
+            LidarGrid.Directions(lidarDirs);
+            // Just below the bottom face, so a beam leaves the hull instead of starting inside it.
+            lidarOrigin = new float3(0f, -hullHeight * 0.5f - 0.05f, 0f);
+
+            proxDirs = new NativeArray<float3>(ProximityRig.Rays, Allocator.Persistent);
+            proxOrigins = new NativeArray<float3>(ProximityRig.Rays, Allocator.Persistent);
+            proxTrue = new NativeArray<float>(ProximityRig.Rays, Allocator.Persistent);
+            proxSensed = new NativeArray<float>(ProximityRig.Rays, Allocator.Persistent);
+            ProximityRig.Directions(proxDirs);
+            ProximityRig.Origins(proxOrigins, hullHalfWidth, hullHalfLength, 0.05f);
+
+            estimateOut = new NativeArray<TankEstimate>(1, Allocator.Persistent);
+            groundHold = new NativeArray<GroundPlane>(1, Allocator.Persistent);
+            kfOut = new NativeArray<KFInfo>(3, Allocator.Persistent);
+            gpsAge = new NativeArray<int>(1, Allocator.Persistent);
+            kf = new floatKFState(TankInsModel.N, 3, Allocator.Persistent);
+            kfQ = new floatMxN(TankInsModel.N, TankInsModel.N, Allocator.Persistent);
+            kfRMag = new floatMxN(3, 3, Allocator.Persistent);
+            kfRGps = new floatMxN(3, 3, Allocator.Persistent);
+
+            noise = TankSensorNoise.Build(in sensors, sensorSeed, Allocator.Persistent);
+            if (!noise.Factored)
+                UnityEngine.Debug.LogError("HoverTankMPCDemo: a sensor covariance is not positive definite, noise is off");
+
+            SeedEstimator();
             ResetControls();
         }
 
@@ -189,8 +252,6 @@ namespace LinearAlgebraDemos
         {
             if (hoverK.IsCreated) hoverK.Dispose();
             hoverLqr.Dispose();
-            if (cornerHeights.IsCreated) cornerHeights.Dispose();
-            if (prevCornerHeights.IsCreated) prevCornerHeights.Dispose();
             if (hoverState.IsCreated) hoverState.Dispose();
             if (hoverOut.IsCreated) hoverOut.Dispose();
 
@@ -199,8 +260,105 @@ namespace LinearAlgebraDemos
             if (wrenchOut.IsCreated) wrenchOut.Dispose();
             if (groundOut.IsCreated) groundOut.Dispose();
 
+            if (lidarDirs.IsCreated) lidarDirs.Dispose();
+            if (lidarTrue.IsCreated) lidarTrue.Dispose();
+            if (lidarSensed.IsCreated) lidarSensed.Dispose();
+            if (proxDirs.IsCreated) proxDirs.Dispose();
+            if (proxOrigins.IsCreated) proxOrigins.Dispose();
+            if (proxTrue.IsCreated) proxTrue.Dispose();
+            if (proxSensed.IsCreated) proxSensed.Dispose();
+            if (estimateOut.IsCreated) estimateOut.Dispose();
+            if (groundHold.IsCreated) groundHold.Dispose();
+            if (kfOut.IsCreated) kfOut.Dispose();
+            if (gpsAge.IsCreated) gpsAge.Dispose();
+            kf.Dispose();
+            if (kfQ.IsCreated) kfQ.Dispose();
+            if (kfRMag.IsCreated) kfRMag.Dispose();
+            if (kfRGps.IsCreated) kfRGps.Dispose();
+            noise.Dispose();
+
             if (plumeMaterial != null) Destroy(plumeMaterial);
             if (plumeTexture != null) Destroy(plumeTexture);
+        }
+
+        /// <summary>
+        /// Puts the filter back where a cold start leaves it: the estimate at the SPAWN POSE, which is
+        /// a design constant of the demo and not a reading off the rigid body, both IMU biases at zero
+        /// so they have to be learned, and a covariance saying how little of that is trusted. Also
+        /// draws the turn-on biases the simulated IMU will actually carry — the filter is never told
+        /// them.
+        /// </summary>
+        void SeedEstimator()
+        {
+            for (int i = 0; i < TankInsModel.N; i++)
+            {
+                kf.x[i] = 0f;
+                for (int j = 0; j < TankInsModel.N; j++) kf.P[i, j] = 0f;
+            }
+            kf.x[TankInsModel.Pos] = spawnPosition.x;
+            kf.x[TankInsModel.Pos + 1] = spawnPosition.y;
+            kf.x[TankInsModel.Pos + 2] = spawnPosition.z;
+
+            for (int i = 0; i < 3; i++)
+            {
+                kf.P[TankInsModel.Pos + i, TankInsModel.Pos + i] = 4f;
+                kf.P[TankInsModel.Vel + i, TankInsModel.Vel + i] = 1f;
+                kf.P[TankInsModel.Att + i, TankInsModel.Att + i] = 0.01f;
+                kf.P[TankInsModel.AccelBias + i, TankInsModel.AccelBias + i] = 0.25f;
+                kf.P[TankInsModel.GyroBias + i, TankInsModel.GyroBias + i] = 2.5e-3f;
+            }
+
+            BuildFilterNoise(Time.fixedDeltaTime);
+
+            groundHold[0] = new GroundPlane
+            {
+                Normal = new float3(0f, 1f, 0f),
+                Clearance = targetRideHeight,
+                Returns = 0,
+                Valid = false,
+            };
+            gpsAge[0] = 0;
+            stepCount = 0;
+
+            uint biasSeed = sensorSeed * 2654435761u + 1u;
+            var rng = new Unity.Mathematics.Random(biasSeed == 0u ? 7u : biasSeed);
+            trueAccelBias = rng.NextFloat3Direction() * sensors.accelBias;
+            trueGyroBias = rng.NextFloat3Direction() * sensors.gyroBias;
+
+            estimate = default;
+            for (int i = 0; i < TraceLength; i++) { traceHoriz[i] = 0f; traceVert[i] = 0f; traceFix[i] = false; }
+            traceHead = 0;
+        }
+
+        /// <summary>
+        /// Rebuilds the filter's process and measurement covariances from the current sensor sliders,
+        /// so moving one in play mode is felt by the estimator and not only by the sensor.
+        /// </summary>
+        void BuildFilterNoise(float dt)
+        {
+            for (int i = 0; i < TankInsModel.N; i++)
+                for (int j = 0; j < TankInsModel.N; j++) kfQ[i, j] = 0f;
+
+            float qv = sensors.accelNoise * dt, qa = sensors.gyroNoise * dt;
+            float qba = AccelBiasWalk * dt, qbg = GyroBiasWalk * dt;
+            for (int i = 0; i < 3; i++)
+            {
+                kfQ[TankInsModel.Pos + i, TankInsModel.Pos + i] = 1e-6f;
+                kfQ[TankInsModel.Vel + i, TankInsModel.Vel + i] = qv * qv;
+                kfQ[TankInsModel.Att + i, TankInsModel.Att + i] = qa * qa;
+                kfQ[TankInsModel.AccelBias + i, TankInsModel.AccelBias + i] = qba * qba;
+                kfQ[TankInsModel.GyroBias + i, TankInsModel.GyroBias + i] = qbg * qbg;
+            }
+
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                {
+                    kfRMag[i, j] = 0f; kfRGps[i, j] = 0f;
+                }
+            for (int i = 0; i < 3; i++) kfRMag[i, i] = sensors.magNoise * sensors.magNoise;
+            kfRGps[0, 0] = sensors.gpsNoiseXZ * sensors.gpsNoiseXZ;
+            kfRGps[1, 1] = sensors.gpsNoiseY * sensors.gpsNoiseY;
+            kfRGps[2, 2] = sensors.gpsNoiseXZ * sensors.gpsNoiseXZ;
         }
 
         void BuildScene()
@@ -228,19 +386,6 @@ namespace LinearAlgebraDemos
             hullVisualGO.transform.localScale = hullSize;
             hullVisualGO.GetComponent<Renderer>().material.color = new Color(0.25f, 0.55f, 0.3f);
             Destroy(hullVisualGO.GetComponent<Collider>());
-
-            // Sense points stay on the BOTTOM FACE, inset so their down-rays clear the hull: they feed
-            // the ride-height and attitude estimate and have nothing to do with where thrust is applied.
-            cornerDX = hullHalfWidth * 0.9f;
-            cornerDZ = hullHalfLength * 0.9f;
-            float cornerY = -hullHeight * 0.5f;
-            cornerLocal = new[]
-            {
-                new Vector3(-cornerDX, cornerY, +cornerDZ),   // FL
-                new Vector3(+cornerDX, cornerY, +cornerDZ),   // FR
-                new Vector3(-cornerDX, cornerY, -cornerDZ),   // BL
-                new Vector3(+cornerDX, cornerY, -cornerDZ),   // BR
-            };
 
             // Thrust mounts sit on the SIDE FLANKS at hull mid-height. y = 0 is the load-bearing part:
             // the moment of a purely forward thrust is then r x F = (0, -x*Fz, 0), pure yaw, so driving
@@ -302,7 +447,6 @@ namespace LinearAlgebraDemos
 
         // Rotation only: the offsets are metric and must stay that way even if someone scales the hull
         // root later.
-        Vector3 CornerWorld(int i) => hullGO.transform.position + hullGO.transform.rotation * cornerLocal[i];
         Vector3 MountWorld(int i) => hullGO.transform.position + hullGO.transform.rotation * mountLocal[i];
 
         /// <summary>Nozzle i's exhaust plane in world space — where its ground-effect height is measured.</summary>
@@ -466,30 +610,39 @@ namespace LinearAlgebraDemos
             float dt = Time.fixedDeltaTime;
             rb.mass = hullMass;   // keep the real body in sync with the slider used by the linearization
 
-            // ---- sense: 4 corner-down raycasts ----
-            // A ray that finds nothing is a NO-RETURN, not a long reading. Over flat ground a miss was
-            // unreachable; over terrain it is ordinary — past a drop-off, over the wall, or off the
-            // edge of the field. Reporting rayLength for a miss would put several metres between that
-            // corner and its neighbours, which the step job's differencing estimate reads as a violent
-            // phantom tilt, so an unreturned corner HOLDS its last range the way a real range finder
-            // holds its last good reading. Rates then come out as exactly zero for that corner rather
-            // than as a step.
-            for (int i = 0; i < 4; i++)
+            // ---- capture truth for the sensor simulation ----
+            // World acceleration is differenced from the body's own velocity, so the specific force the
+            // accelerometer is handed is the real one and not a restatement of the commanded thrust.
+            Transform hull = hullGO.transform;
+            Vector3 vel = rb.linearVelocity;
+            Vector3 accelWorld = (vel - prevVelocity) / dt;
+            prevVelocity = vel;
+
+            truth = new TankTruth
             {
-                Vector3 world = CornerWorld(i) + Vector3.down * 0.02f;
-                cornerReturn[i] = Physics.Raycast(world, Vector3.down, out RaycastHit hit, rayLength);
-                if (cornerReturn[i]) cornerHeights[i] = hit.distance;
-            }
+                Position = hull.position,
+                Velocity = vel,
+                Right = hull.right,
+                Up = hull.up,
+                Fwd = hull.forward,
+            };
+            truth.SpecificForce = truth.ToBody(accelWorld - Physics.gravity);
+            truth.AngularRate = truth.ToBody(rb.angularVelocity);
+
+            // ---- sense: the 5x5 lidar fan and the four proximity rangers ----
+            TankSensorRig.Range(hull, lidarOrigin, lidarDirs, rayLength, lidarTrue);
+            TankSensorRig.Range(hull, proxOrigins, proxDirs, rayLength, proxTrue);
 
             // ---- sense: 4 nozzle-down raycasts, one per thruster, for ground effect ----
-            // Fired from the exhaust planes rather than the sense corners, because ground effect is a
+            // Fired from the exhaust planes rather than from the lidar mount, because ground effect is a
             // property of where the DOWNWASH meets the ground: a tilted hull puts its four nozzles at
             // four different heights, and the asymmetric augmentation that follows is the whole point.
             //
-            // A nozzle whose ray finds nothing reads rayLength rather than holding its last range: no
-            // ground within rayLength IS the physical answer here (out of ground effect), and unlike
-            // the corner estimate nothing differences these four, so a step in one cannot become a
-            // phantom tilt.
+            // A nozzle whose ray finds nothing reads rayLength rather than being dropped: no ground
+            // within rayLength IS the physical answer here (out of ground effect), and nothing
+            // differences these four, so a step in one cannot become a phantom tilt. These four also
+            // stay NOISE-FREE, because the same numbers scale the force applied to the rigid body and
+            // the allocation's Jacobian — they are a plant property, not an estimate.
             for (int i = 0; i < 4; i++)
             {
                 Vector3 exit = NozzleExitWorld(i);
@@ -497,26 +650,53 @@ namespace LinearAlgebraDemos
                 nozzleHeights[i] = nozzleReturn[i] ? hit.distance : rayLength;
             }
 
+            // ---- estimate: corrupt the readings into what each sensor reports, then fuse ----
+            BuildFilterNoise(dt);
+            var estJob = new TankEstimatorJob
+            {
+                Truth = truth,
+                TrueAccelBias = trueAccelBias, TrueGyroBias = trueGyroBias,
+                LidarDirs = lidarDirs, LidarOrigin = lidarOrigin,
+                LidarTrue = lidarTrue, LidarSensed = lidarSensed,
+                ProxTrue = proxTrue, ProxSensed = proxSensed,
+                Noise = noise, Spec = sensors,
+                Kf = kf, Q = kfQ, RMag = kfRMag, RGps = kfRGps,
+                KfOut = kfOut, Out = estimateOut, HoverState = hoverState, Ground = groundHold,
+                GpsAge = gpsAge,
+                Dt = dt, Gravity = -Physics.gravity.y, TargetRideHeight = targetRideHeight,
+                Step = stepCount,
+            };
+
+            var sw = Stopwatch.StartNew();
+            IJobExtensions.RunByRef(ref estJob);
+            sw.Stop();
+            estMs = (float)sw.Elapsed.TotalMilliseconds;
+
+            noise = estJob.Noise;   // the random stream advanced
+            kf = estJob.Kf;         // x and P advanced
+            estimate = estimateOut[0];
+            stepCount++;
+
+            RecordError();
+
             // Mouse X and A/D are two INPUT DEVICES on one axis, so they sum and clamp.
             float mouseSteer = lookX * lookSensitivity;
             lookX = 0f;
             lastSteer = Mathf.Clamp(Input.GetAxis("Horizontal") + mouseSteer, -1f, 1f);
             lastStrafe = (Input.GetKey(KeyCode.E) ? 1f : 0f) - (Input.GetKey(KeyCode.Q) ? 1f : 0f);
             lastBrake = Input.GetKey(KeyCode.Space);
-            lastForwardSpeed = Vector3.Dot(rb.linearVelocity, hullGO.transform.forward);
-            lastLateralSpeed = Vector3.Dot(rb.linearVelocity, hullGO.transform.right);
-            lastYawRate = Vector3.Dot(rb.angularVelocity, hullGO.transform.up);
 
+            // Everything the control law is handed below comes out of the estimator. Nothing here
+            // reads the rigid body or the transform.
             var job = new HoverTankMPCStepJob
             {
-                CornerHeights = cornerHeights, PrevCornerHeights = prevCornerHeights,
                 HoverState = hoverState,
                 HoverK = hoverK, HoverLqrState = hoverLqr, HoverOut = hoverOut,
                 Mass = hullMass, RollInertia = rollInertia, PitchInertia = pitchInertia,
                 Gravity = -Physics.gravity.y,
                 QHeight = qHeight, QHeightRate = qHeightRate, QTilt = qTilt, QTiltRate = qTiltRate,
                 RThrust = rThrust, RTorque = rTorque,
-                TargetRideHeight = targetRideHeight, CornerDX = cornerDX, CornerDZ = cornerDZ, Dt = dt,
+                Dt = dt,
 
                 Controls = controls, AllocOut = allocOut, WrenchOut = wrenchOut,
                 Settings = thrusters, Health = thrusterHealth,
@@ -527,25 +707,27 @@ namespace LinearAlgebraDemos
                 BrakeInput = lastBrake,
                 BrakeForce = brakeForce, BrakeGain = brakeGain, BrakeYawGain = brakeYawGain,
                 IdleLinearGain = idleLinearGain, IdleAngularGain = idleAngularGain,
-                ForwardSpeed = lastForwardSpeed,
-                LateralSpeed = lastLateralSpeed,
-                YawRate = lastYawRate,
-                TiltCos = Vector3.Dot(hullGO.transform.up, Vector3.up),
+                ForwardSpeed = estimate.ForwardSpeed,
+                LateralSpeed = estimate.LateralSpeed,
+                YawRate = estimate.YawRate,
+                TiltCos = estimate.TiltCos,
 
                 NozzleHeights = nozzleHeights,
                 NozzleRadius = groundEffect ? nozzleRadius : 0f,
                 GroundOut = groundOut,
             };
 
-            var sw = Stopwatch.StartNew();
+            sw.Restart();
             IJobExtensions.RunByRef(ref job);
             sw.Stop();
-            frameMs = (float)sw.Elapsed.TotalMilliseconds;
+            ctrlMs = (float)sw.Elapsed.TotalMilliseconds;
 
             hoverLqr = job.HoverLqrState;
 
             LogOnceIfDiverged(hoverOut[1] == 1f, ref hoverDivergedLogged, "hover LQR");
             LogOnceIfDiverged(allocOut[0].status == QPStatus.Optimal, ref allocFailedLogged, "allocation QP");
+            LogOnceIfDiverged(kfOut[0].status == KFStatus.Ok && kfOut[1].status == KFStatus.Ok
+                              && kfOut[2].status == KFStatus.Ok, ref estimatorFailedLogged, "state estimator");
 
             // ---- apply thrust: one force per thruster, at its mount, along its gimbal direction ----
             // AddForceAtPosition reproduces both the force and its moment about the center of mass,
@@ -565,6 +747,44 @@ namespace LinearAlgebraDemos
                 thrusterPivots[i].localRotation = GimbalRotation(pitch, yaw);
                 UpdatePlume(i, throttle, thrusterHealth[i] > 0f);
             }
+        }
+
+        /// <summary>
+        /// Measures the estimate against truth for the panel and pushes it onto the trace ring. This
+        /// is the ONLY comparison of the two in the demo, and it drives a readout — nothing here feeds
+        /// back into the estimator or the control law.
+        /// </summary>
+        void RecordError()
+        {
+            posError = estimate.Position - truth.Position;
+            attError = Attitude.Difference(estimate.Rpy, Attitude.FromBasis(truth.Right, truth.Up, truth.Fwd));
+
+            // True ride height is measured the same way the fit reports it: perpendicular to the local
+            // ground plane, which is the vertical gap foreshortened by the terrain's own tilt.
+            Vector3 origin = hullGO.transform.position
+                           + hullGO.transform.rotation * new Vector3(lidarOrigin.x, lidarOrigin.y, lidarOrigin.z);
+            float3 nTrue = TerrainNormal(origin.x, origin.z);
+            trueSlopeDeg = Mathf.Acos(Mathf.Clamp(nTrue.y, -1f, 1f)) * Mathf.Rad2Deg;
+            float vertical = origin.y - TerrainField.Height(origin.x, origin.z);
+            clearanceError = estimate.Clearance - vertical * nTrue.y;
+
+            traceHoriz[traceHead] = math.length(posError.xz);
+            traceVert[traceHead] = math.abs(posError.y);
+            traceFix[traceHead] = estimate.GpsFix;
+            traceHead = (traceHead + 1) % TraceLength;
+        }
+
+        /// <summary>
+        /// Terrain-truth surface normal at a world XZ point, by central differences on
+        /// <see cref="TerrainField.Height"/>. UI only: this is the number the fitted slope is scored
+        /// against, and no sensor may call it.
+        /// </summary>
+        static float3 TerrainNormal(float x, float z)
+        {
+            const float d = 0.25f;
+            float gx = (TerrainField.Height(x + d, z) - TerrainField.Height(x - d, z)) / (2f * d);
+            float gz = (TerrainField.Height(x, z + d) - TerrainField.Height(x, z - d)) / (2f * d);
+            return math.normalize(new float3(-gx, 1f, -gz));
         }
 
         // Pitch servo first, yaw servo outboard of it, matching the pitch-then-yaw chain
@@ -614,14 +834,58 @@ namespace LinearAlgebraDemos
         {
             if (!Application.isPlaying || hullGO == null) return;
 
-            for (int i = 0; i < 4; i++)
+            Transform hull = hullGO.transform;
+            Vector3 lidarWorld = hull.position + hull.rotation * (Vector3)lidarOrigin;
+
+            // The lidar fan: a beam that returned is drawn to its hit, a beam that did not is drawn
+            // dim to the end of its range. Misses are what the plane fit has to drop.
+            for (int k = 0; k < LidarGrid.Rays; k++)
             {
-                Vector3 world = CornerWorld(i);
-                // A held corner is drawn dim: what the estimate is using is not what was measured.
-                Gizmos.color = cornerReturn[i] ? Color.cyan : new Color(0.3f, 0.3f, 0.35f);
-                Gizmos.DrawLine(world, world + Vector3.down * cornerHeights[i]);
-                Gizmos.DrawSphere(world + Vector3.down * cornerHeights[i], 0.08f);
+                Vector3 dir = hull.rotation * (Vector3)lidarDirs[k];
+                float r = lidarSensed[k];
+                bool hit = r > 0f;
+                Gizmos.color = hit ? new Color(0.25f, 0.85f, 1f, 0.7f) : new Color(0.3f, 0.3f, 0.35f, 0.35f);
+                Gizmos.DrawLine(lidarWorld, lidarWorld + dir * (hit ? r : rayLength));
+                if (hit) Gizmos.DrawSphere(lidarWorld + dir * r, 0.05f);
             }
+
+            // The fitted ground plane, as a cross lying in it at the sensed clearance below the mount,
+            // plus its normal. Over a slope this tips with the ground while the hull stays level.
+            GroundPlane held = groundHold[0];
+            if (held.Valid)
+            {
+                Vector3 n = hull.rotation * (Vector3)held.Normal;
+                Vector3 foot = lidarWorld - n * held.Clearance;
+                Vector3 a = Vector3.Cross(n, hull.forward);
+                if (a.sqrMagnitude < 1e-6f) a = Vector3.Cross(n, hull.right);
+                a.Normalize();
+                Vector3 b = Vector3.Cross(n, a);
+                Gizmos.color = new Color(1f, 0.85f, 0.2f);
+                Gizmos.DrawLine(foot - a * 3f, foot + a * 3f);
+                Gizmos.DrawLine(foot - b * 3f, foot + b * 3f);
+                Gizmos.DrawLine(foot, foot + n * 2f);
+            }
+
+            // The four proximity rangers, on the hull faces they look out of.
+            for (int k = 0; k < ProximityRig.Rays; k++)
+            {
+                Vector3 o = hull.position + hull.rotation * (Vector3)proxOrigins[k];
+                Vector3 dir = hull.rotation * (Vector3)proxDirs[k];
+                float r = proxSensed[k];
+                bool hit = r > 0f;
+                Gizmos.color = hit ? new Color(1f, 0.35f, 0.35f) : new Color(0.3f, 0.25f, 0.25f, 0.35f);
+                Gizmos.DrawLine(o, o + dir * (hit ? r : rayLength));
+            }
+
+            // The ESTIMATE, as a wire hull at the estimated pose. The gap between it and the real hull
+            // is the position and attitude error the panel is plotting.
+            Gizmos.color = new Color(1f, 0.4f, 0.9f, 0.9f);
+            Gizmos.matrix = Matrix4x4.TRS(estimate.Position,
+                Quaternion.Euler(estimate.Rpy.y * Mathf.Rad2Deg, estimate.Rpy.z * Mathf.Rad2Deg,
+                                 estimate.Rpy.x * Mathf.Rad2Deg),
+                Vector3.one);
+            Gizmos.DrawWireCube(Vector3.zero, new Vector3(2f * hullHalfWidth, hullHeight, 2f * hullHalfLength));
+            Gizmos.matrix = Matrix4x4.identity;
 
             // Ground-effect ranges, one per nozzle, warming from grey to orange with that nozzle's
             // augmentation: over sloping ground the four differ, which is what the allocation is
@@ -677,16 +941,19 @@ namespace LinearAlgebraDemos
         void OnGUI()
         {
             GUILayout.BeginArea(PanelRect, GUI.skin.box);
-            GUILayout.Label($"Hover tank over terrain — {frameMs:F3} ms/frame (3x6 hover LQR + 12-control allocation QP)");
+            GUILayout.Label($"Hover tank over terrain — {estMs:F3} ms sense+EKF, {ctrlMs:F3} ms control (15-state EKF + 3x6 hover LQR + 12-control allocation QP)");
             GUILayout.Label($"Mouse X turn   Mouse Y climb   W/S drive   Q/E strafe   A/D yaw   SPACE brake   ESC {(mouseCaptured ? "release cursor" : "RESUME DRIVING")}");
+
+            DrawEstimatorPanel();
+
             GUILayout.Label($"hover: converged={hoverOut[1] == 1f}  iters={hoverOut[0]:F0}  residual={hoverOut[2]:E1}   state: h={hoverState[0]:F2} roll={hoverState[2] * Mathf.Rad2Deg:F1} pitch={hoverState[4] * Mathf.Rad2Deg:F1}");
 
             QPInfo alloc = allocOut[0];
             GUILayout.Label($"alloc QP: {alloc.status}  pivots={alloc.iterations}  obj={alloc.objective:E2}");
             GUILayout.Label($"force  N   lateral {wrenchOut[6]:F0}/{wrenchOut[0]:F0}   lift {wrenchOut[7]:F0}/{wrenchOut[1]:F0}   drive {wrenchOut[8]:F0}/{wrenchOut[2]:F0}   (achieved/demanded)");
             GUILayout.Label($"torque Nm  pitch {wrenchOut[9]:F0}/{wrenchOut[3]:F0}   yaw {wrenchOut[10]:F0}/{wrenchOut[4]:F0}   roll {wrenchOut[11]:F0}/{wrenchOut[5]:F0}");
-            GUILayout.Label($"yaw axis: {YawOwner()}   speed {lastForwardSpeed,5:F1} m/s   strafe {lastLateralSpeed,5:F1} m/s   yaw rate {lastYawRate * Mathf.Rad2Deg,5:F0} deg/s");
-            GUILayout.Label($"ride height cmd {targetRideHeight:F2} m   ground {GroundLabel()}   mouse {(mouseCaptured ? "CAPTURED" : "released")}");
+            GUILayout.Label($"yaw axis: {YawOwner()}   speed {estimate.ForwardSpeed,5:F1} m/s   strafe {estimate.LateralSpeed,5:F1} m/s   yaw rate {estimate.YawRate * Mathf.Rad2Deg,5:F0} deg/s   (all estimated)");
+            GUILayout.Label($"ride height cmd {targetRideHeight:F2} m   sensed {estimate.Clearance:F2} m   lidar {GroundLabel()}   mouse {(mouseCaptured ? "CAPTURED" : "released")}");
 
             GUILayout.BeginHorizontal();
             groundEffect = GUILayout.Toggle(groundEffect, "ground effect", GUILayout.Width(110));
@@ -738,11 +1005,8 @@ namespace LinearAlgebraDemos
                 rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
                 thrusterHealth = new float4(1f);
-                for (int i = 0; i < 4; i++)
-                {
-                    cornerHeights[i] = targetRideHeight;
-                    prevCornerHeights[i] = targetRideHeight;
-                }
+                prevVelocity = Vector3.zero;
+                SeedEstimator();
                 ResetControls();
                 SnapCamera();
             }
@@ -770,13 +1034,84 @@ namespace LinearAlgebraDemos
         /// <summary>Mean of the four nozzle augmentations — the factor the hover model's B carries.</summary>
         float MeanGroundGain() => 0.25f * (groundOut[0] + groundOut[1] + groundOut[2] + groundOut[3]);
 
-        // Corners whose ray came back this step. Anything less than 4 means part of the attitude
-        // estimate is running on held ranges.
+        // Beams that came back this step and how many of them the fitted plane kept. Too few returns
+        // and the fit is refused, so the hover loop is flying against the last plane the lidar could
+        // see; a large gap between the two counts means the fan is straddling a terrain feature.
         string GroundLabel()
+            => estimate.GroundValid
+                ? $"{estimate.LidarInliers}/{estimate.LidarReturns} of {LidarGrid.Rays} beams"
+                : $"{estimate.LidarReturns}/{LidarGrid.Rays} beams  [HOLDING]";
+
+        /// <summary>
+        /// The estimator readout: how far the estimate has drifted from truth, what the sensors are
+        /// doing about it, and the hull-tilt-versus-terrain-slope split the fitted plane buys.
+        ///
+        /// The trace is where the multi-rate structure shows: horizontal position walks away under
+        /// inertial dead reckoning and is pulled back at every beacon fix, while the attitude row
+        /// barely moves because the gravity reference and the magnetometer run two orders of magnitude
+        /// more often.
+        /// </summary>
+        void DrawEstimatorPanel()
         {
-            int hits = (cornerReturn[0] ? 1 : 0) + (cornerReturn[1] ? 1 : 0)
-                     + (cornerReturn[2] ? 1 : 0) + (cornerReturn[3] ? 1 : 0);
-            return hits == 4 ? "4/4 rays" : $"{hits}/4 rays  [HOLDING]";
+            float3 attDeg = attError * Mathf.Rad2Deg;
+            GUILayout.Label($"EST vs TRUTH   pos  x {posError.x,6:F2}  y {posError.y,6:F2}  z {posError.z,6:F2} m   |horiz| {math.length(posError.xz),5:F2} m"
+                          + $"   ride height {clearanceError,6:F2} m");
+            GUILayout.Label($"               att  roll {attDeg.x,6:F2}  pitch {attDeg.y,6:F2}  yaw {attDeg.z,6:F2} deg"
+                          + $"   bias a {math.length(estimate.AccelBias):F3}/{math.length(trueAccelBias):F3}  g {math.length(estimate.GyroBias):F4}/{math.length(trueGyroBias):F4}");
+            GUILayout.Label($"sensors: beacon fix {estimate.StepsSinceGps * Time.fixedDeltaTime:F2} s ago"
+                          + $"   gravity ref sigma {estimate.TiltSigma:F3} ({(estimate.TiltSigma > 3f * sensors.tiltSigma ? "MANOEUVRING" : "coasting")})"
+                          + $"   mag {(estimate.MagFix ? "on" : "-")}   {GroundLabel()}");
+
+            float hullTilt = Mathf.Acos(Mathf.Clamp(estimate.TiltCos, -1f, 1f)) * Mathf.Rad2Deg;
+            float hullTiltTrue = Mathf.Acos(Mathf.Clamp(truth.Up.y, -1f, 1f)) * Mathf.Rad2Deg;
+            float slope = Mathf.Acos(Mathf.Clamp(estimate.GroundNormal.y, -1f, 1f)) * Mathf.Rad2Deg;
+            GUILayout.Label($"SEPARATED  hull tilt {hullTilt:F1} deg (truth {hullTiltTrue:F1})   terrain slope {slope:F1} deg (truth {trueSlopeDeg:F1})"
+                          + "   — one estimate cannot say both without the fitted plane");
+
+            DrawErrorTrace(GUILayoutUtility.GetRect(TraceLength, 52f));
+        }
+
+        /// <summary>
+        /// Draws the error ring buffer: horizontal position error in cyan, vertical in amber, one
+        /// pixel column per fixed step, with a tick at each beacon fix. Full scale is
+        /// <see cref="TraceScale"/> metres.
+        /// </summary>
+        void DrawErrorTrace(Rect r)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+
+            Color prev = GUI.color;
+            GUI.color = new Color(0.1f, 0.1f, 0.12f, 0.85f);
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+
+            float w = Mathf.Min(r.width, TraceLength);
+            for (int k = 0; k < TraceLength; k++)
+            {
+                int i = (traceHead + k) % TraceLength;
+                float x = r.x + k * (w / TraceLength);
+
+                if (traceFix[i])
+                {
+                    GUI.color = new Color(0.35f, 0.35f, 0.4f);
+                    GUI.DrawTexture(new Rect(x, r.y, 1f, r.height), Texture2D.whiteTexture);
+                }
+
+                DrawTraceBar(r, x, traceVert[i], new Color(1f, 0.7f, 0.2f, 0.8f));
+                DrawTraceBar(r, x, traceHoriz[i], new Color(0.3f, 0.85f, 1f));
+            }
+
+            GUI.color = prev;
+        }
+
+        /// <summary>Full-scale of the error trace, metres.</summary>
+        const float TraceScale = 4f;
+
+        static void DrawTraceBar(Rect r, float x, float value, Color color)
+        {
+            float h = Mathf.Clamp01(value / TraceScale) * r.height;
+            if (h < 1f) h = 1f;
+            GUI.color = color;
+            GUI.DrawTexture(new Rect(x, r.yMax - h, 1f, h), Texture2D.whiteTexture);
         }
 
         static float LabeledSlider(string label, float v, float lo, float hi)
@@ -790,12 +1125,13 @@ namespace LinearAlgebraDemos
     }
 
     /// <summary>
-    /// Per-fixed-step control law. Rebuilds the hover state from corner ride heights and warm-solves
-    /// the 6-state hover LQR (3 acceleration commands: vertical, roll, pitch); resolves the driver's
-    /// forward/strafe/yaw/brake inputs into the rest of the demanded hull-frame
-    /// <see cref="GimbalWrench"/>; then allocates that onto 4 pitch angles, 4 yaw angles and 4
-    /// throttles with <see cref="GimbalAllocation.Solve"/>. The LQR re-runs every step (warm
-    /// <see cref="floatLQRState"/>, cheap once converged) to showcase the warm-start path.
+    /// Per-fixed-step control law, downstream of <see cref="TankEstimatorJob"/> and blind to anything
+    /// it did not produce. Warm-solves the 6-state hover LQR over the estimated hover state (3
+    /// acceleration commands: vertical, roll, pitch); resolves the driver's forward/strafe/yaw/brake
+    /// inputs into the rest of the demanded hull-frame <see cref="GimbalWrench"/>; then allocates that
+    /// onto 4 pitch angles, 4 yaw angles and 4 throttles with <see cref="GimbalAllocation.Solve"/>.
+    /// The LQR re-runs every step (warm <see cref="floatLQRState"/>, cheap once converged) to showcase
+    /// the warm-start path.
     ///
     /// This step's <see cref="GroundEffect"/> augmentation enters the allocation's Jacobian, where it
     /// is exact, and the hover model's vertical input column, where it is a deliberate detune — see
@@ -810,15 +1146,18 @@ namespace LinearAlgebraDemos
         public const float StickDeadzone = 0.02f;
 
         // hover / attitude
-        [ReadOnly] public NativeArray<float> CornerHeights;   // FL, FR, BL, BR
-        public NativeArray<float> PrevCornerHeights;
-        public NativeArray<float> HoverState;
+        /// <summary>
+        /// [ride-height error, closing rate, roll, roll rate, pitch, pitch rate] — the estimator's
+        /// output, read here and never written. Angles are radians and follow
+        /// <see cref="Attitude"/>: positive pitch is nose-down, positive roll lifts the right side.
+        /// </summary>
+        [ReadOnly] public NativeArray<float> HoverState;
         public floatMxN HoverK;
         public floatLQRState HoverLqrState;
         public NativeArray<float> HoverOut;
         public float Mass, RollInertia, PitchInertia, Gravity;
         public float QHeight, QHeightRate, QTilt, QTiltRate, RThrust, RTorque;
-        public float TargetRideHeight, CornerDX, CornerDZ, Dt;
+        public float Dt;
 
         // driver
         public float DriveInput, DriveForce;
@@ -869,45 +1208,6 @@ namespace LinearAlgebraDemos
             // what a throttle buys are then the same numbers by construction, not by agreement.
             float4 groundGain = GroundEffect.Factor(NozzleHeights, NozzleRadius);
             for (int i = 0; i < GimbalAllocation.Thrusters; i++) GroundOut[i] = groundGain[i];
-
-            // ---- reconstruct the 6-state hover/attitude estimate from corner heights ----
-            // roll = rotation about the forward axis, pitch = rotation about the right axis;
-            // both derived purely from differenced corner ride heights (and their finite-
-            // difference rates), matching the torque sign convention the allocation uses.
-            //
-            // KNOWN LIMIT of a ride-height-only estimate: a corner height difference is produced just
-            // as readily by a SLOPING GROUND as by a tilted hull, and nothing here can tell the two
-            // apart. Over terrain the loop therefore levels the hull to the LOCAL GROUND PLANE rather
-            // than to gravity: the tank visibly banks into a hillside, holds that bank while it
-            // traverses, and rolls back out on the far side. Its ride height stays right; its attitude
-            // is wrong by the terrain gradient. Terrain gradients are shaped gentle enough
-            // (TerrainField) that this stays a lean and not a divergence, which is why the steep face
-            // and the wall sit well away from the spawn apron.
-            float hFL = CornerHeights[0], hFR = CornerHeights[1], hBL = CornerHeights[2], hBR = CornerHeights[3];
-            float heightErr = 0.25f * (hFL + hFR + hBL + hBR) - TargetRideHeight;
-
-            float vFL = (hFL - PrevCornerHeights[0]) / Dt;
-            float vFR = (hFR - PrevCornerHeights[1]) / Dt;
-            float vBL = (hBL - PrevCornerHeights[2]) / Dt;
-            float vBR = (hBR - PrevCornerHeights[3]) / Dt;
-            float heightRate = 0.25f * (vFL + vFR + vBL + vBR);
-
-            float hRight = 0.5f * (hFR + hBR), hLeft = 0.5f * (hFL + hBL);
-            float roll = (hRight - hLeft) / (2f * CornerDX);
-            float vRight = 0.5f * (vFR + vBR), vLeft = 0.5f * (vFL + vBL);
-            float rollRate = (vRight - vLeft) / (2f * CornerDX);
-
-            float hBack = 0.5f * (hBL + hBR), hFront = 0.5f * (hFL + hFR);
-            float pitch = (hBack - hFront) / (2f * CornerDZ);
-            float vBack = 0.5f * (vBL + vBR), vFront = 0.5f * (vFL + vFR);
-            float pitchRate = (vBack - vFront) / (2f * CornerDZ);
-
-            HoverState[0] = heightErr; HoverState[1] = heightRate;
-            HoverState[2] = roll; HoverState[3] = rollRate;
-            HoverState[4] = pitch; HoverState[5] = pitchRate;
-
-            PrevCornerHeights[0] = hFL; PrevCornerHeights[1] = hFR;
-            PrevCornerHeights[2] = hBL; PrevCornerHeights[3] = hBR;
 
             // ---- hover LQR: warm re-solve every step, with the mean augmentation in B ----
             // WHAT THIS IS, PRECISELY: a deliberate mild detune, NOT identification of a varying plant.
