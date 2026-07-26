@@ -118,7 +118,10 @@ namespace BULA
                 b[i] = s * sq;
             }
 
-            bool ok = QR.solveInPlace(ref A, ref b, ref x);   // DESTROYS A and b
+            // QRCP, not QR: the un-pivoted solve always reports Success, so a degenerate cloud (every
+            // point collinear in 2D, coplanar in 3D) would divide through a zero diagonal and be
+            // certified as a fit. DESTROYS A and b.
+            bool ok = QRCP.solveInPlace(ref A, ref b, ref x).rank == d + 1;
             if (ok)
             {
                 float c2 = (float)0;

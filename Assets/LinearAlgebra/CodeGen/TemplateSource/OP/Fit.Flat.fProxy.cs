@@ -247,12 +247,26 @@ namespace BULA
             // ellipse -- distance zero, so a dead-centre outlier would score as a perfect inlier.
             // Flooring each coordinate keeps the root real, at a cost of about the floor for points
             // sitting on an axis.
-            fProxy floor = big * Consts.fProxySqrtEps;
-            x = math.max(x, floor); y = math.max(y, floor);
+            // PER-AXIS floor, each scaled by its own radius. One shared floor taken from the largest
+            // radius would raise a legitimate small coordinate on the OTHER axis: on a 1e7:1 ellipse
+            // it lifts the minor-axis vertex y = 1 up to 3452, and the vertex then measures thousands
+            // of units from the curve it lies on.
+            x = math.max(x, a * Consts.fProxySqrtEps);
+            y = math.max(y, b * Consts.fProxySqrtEps);
 
             fProxy da = a2 - small, db = b2 - small;
-            fProxy lo = (fProxy)0;                                    // F -> +infinity
-            fProxy hi = big * math.sqrt(x * x + y * y) + big * big;   // F(hi) < 0
+
+            // Bracket both ends from the root condition itself, rather than 0 and a crude upper bound.
+            // The two terms of F sum to 1 at the root, so each is <= 1 (giving s + d_i >= r_i·q_i) and
+            // the larger is >= 1/2 (giving s + d_i <= sqrt(2)·r_i·q_i for that axis). Between them the
+            // bracket is a factor of sqrt(2) wide instead of spanning to big².
+            //
+            // This is not a micro-optimization. Far above the root F is flat at -1, so every Newton
+            // step overshoots the bracket and degrades to bisection; a bracket spanning big² then
+            // needs log2(big²/s*) halvings, which past roughly a 1e6 aspect ratio exceeds the
+            // iteration cap and returns a large distance for a point sitting ON the ellipse.
+            fProxy lo = math.max((fProxy)0, math.max(a * x - da, b * y - db));
+            fProxy hi = math.max(Consts.fProxySqrt2 * a * x - da, Consts.fProxySqrt2 * b * y - db);
             fProxy s = (fProxy)0.5 * hi;
 
             for (int i = 0; i < 40; i++)

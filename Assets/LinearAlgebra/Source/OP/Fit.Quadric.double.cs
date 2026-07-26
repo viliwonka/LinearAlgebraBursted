@@ -67,18 +67,19 @@ namespace BULA
             bool ok = true;
             for (int it = 0; it < maxIter; it++)
             {
-                double maxDelta = (double)0, sw = (double)0;
+                double maxDelta = (double)0, maxW = (double)0, sw = (double)0;
                 for (int i = 0; i < n; i++)
                 {
-                    double d = SampsonConic(in coeffs, points[i]);
-                    double wNew = loss.RhoPrime(d * d);
+                    double d = SampsonConic(in coeffs, points[i], out double g2);
+                    double wNew = loss.RhoPrime(d * d) / g2;
                     maxDelta = math.max(maxDelta, math.abs(wNew - w[i]));
+                    maxW = math.max(maxW, wNew);
                     w[i] = wNew;
                     sw += wNew;
                 }
 
                 if (!(sw > (double)0)) { ok = false; break; }   // redescending loss rejected everything
-                if (maxDelta <= Consts.doubleSqrtEps) break;
+                if (maxDelta <= Consts.doubleSqrtEps * math.max(maxW, (double)1)) break;
 
                 ok = ConicWeighted(points, in w, ref coeffs);
                 if (!ok) break;
@@ -261,18 +262,19 @@ namespace BULA
             bool ok = true;
             for (int it = 0; it < maxIter; it++)
             {
-                double maxDelta = (double)0, sw = (double)0;
+                double maxDelta = (double)0, maxW = (double)0, sw = (double)0;
                 for (int i = 0; i < n; i++)
                 {
-                    double d = SampsonQuadric(in coeffs, points[i]);
-                    double wNew = loss.RhoPrime(d * d);
+                    double d = SampsonQuadric(in coeffs, points[i], out double g2);
+                    double wNew = loss.RhoPrime(d * d) / g2;
                     maxDelta = math.max(maxDelta, math.abs(wNew - w[i]));
+                    maxW = math.max(maxW, wNew);
                     w[i] = wNew;
                     sw += wNew;
                 }
 
                 if (!(sw > (double)0)) { ok = false; break; }   // redescending loss rejected everything
-                if (maxDelta <= Consts.doubleSqrtEps) break;
+                if (maxDelta <= Consts.doubleSqrtEps * math.max(maxW, (double)1)) break;
 
                 ok = ellipsoidOnly ? EllipsoidWeighted(points, in w, ref coeffs)
                                    : QuadricWeighted(points, in w, ref coeffs);
@@ -376,7 +378,7 @@ namespace BULA
         // and errs toward KEEPING the point, which is the safe direction -- discarding points because
         // the model happens to be singular near them would let a bad fit defend itself.
 
-        static double SampsonConic(in doubleN c, double2 p)
+        static double SampsonConic(in doubleN c, double2 p, out double grad2)
         {
             double A = c[0], B = c[1], C = c[2], D = c[3], E = c[4], F = c[5];
             double x = p.x, y = p.y;
@@ -385,11 +387,14 @@ namespace BULA
             double gx = (double)2 * A * x + B * y + D;
             double gy = B * x + (double)2 * C * y + E;
 
-            double g = math.sqrt(gx * gx + gy * gy);
+            double g2 = gx * gx + gy * gy;
+            grad2 = math.max(g2, Consts.doubleEpsilon);
+
+            double g = math.sqrt(g2);
             return g > Consts.doubleSqrtEps ? math.abs(val) / g : math.abs(val);
         }
 
-        static double SampsonQuadric(in doubleN c, double3 p)
+        static double SampsonQuadric(in doubleN c, double3 p, out double grad2)
         {
             double A = c[0], B = c[1], C = c[2], D = c[3], E = c[4], F = c[5];
             double G = c[6], H = c[7], I = c[8], J = c[9];
@@ -403,7 +408,10 @@ namespace BULA
             double gy = (double)2 * B * y + D * x + F * z + H;
             double gz = (double)2 * C * z + E * x + F * y + I;
 
-            double g = math.sqrt(gx * gx + gy * gy + gz * gz);
+            double g2 = gx * gx + gy * gy + gz * gz;
+            grad2 = math.max(g2, Consts.doubleEpsilon);
+
+            double g = math.sqrt(g2);
             return g > Consts.doubleSqrtEps ? math.abs(val) / g : math.abs(val);
         }
 
@@ -423,7 +431,9 @@ namespace BULA
                     rhs[a] = -S2[col, a];                    // row `col` of S2 is column `col` of S2^T
                 }
 
-                ok = QR.solveInPlace(ref Lu, ref rhs, ref sol);
+                // Rank-revealing: S3 is the Gram of (x, y, 1) and goes exactly singular on a collinear
+                // cloud. An un-pivoted solve would report success and hand back Inf/NaN.
+                ok = QRCP.solveInPlace(ref Lu, ref rhs, ref sol).rank == 3;
                 if (ok) for (int a = 0; a < 3; a++) T[a, col] = sol[a];
             }
 

@@ -1356,8 +1356,12 @@ public class doubleFitTests
         var samp = new doubleN(10, Allocator.Temp);
         Assert.IsTrue(Fit.quadric(pts, in l2, ref samp), "Sampson quadric fit failed");
 
-        Assert.LessOrEqual(CoeffError(samp, want), CoeffError(plain, want) + 1e-9,
-            "reweighting by Sampson distance must not be worse than the raw algebraic fit");
+        // STRICTLY better, not merely "not worse". The weak form of this assertion passed vacuously
+        // while the Sampson weight was missing its 1/|grad F|² factor -- without that factor L2's
+        // RhoPrime == 1 leaves every weight at 1, the loop converges before its first refit, and the
+        // result is bit-identical to the plain algebraic fit.
+        Assert.Less(CoeffError(samp, want), CoeffError(plain, want),
+            "reweighting by Sampson distance must beat the raw algebraic fit");
 
         pts.Dispose(); plain.Dispose(); samp.Dispose();
     }
@@ -2046,6 +2050,92 @@ public class doubleFitTests
 
         Assert.Less(math.length(got.Center - truth.Center), (double)(3.0 * AlgTol), "centre");
         Assert.Less(RadiiError(got.Radii, 3.0, 2.0, 1.5), 3.0 * AlgTol, "semi-axes");
+
+        pts.Dispose();
+    }
+
+    // ------------------------------------------------------- review regressions
+
+    // A cone is ONE nappe. The perpendicular-to-the-generating-line formula measures the infinite
+    // DOUBLE cone, so a point behind the apex scores as though it lay on the mirror surface -- which
+    // makes RANSAC count phantom inliers there. Apex nearest means the distance is just |p - apex|.
+    [Test]
+    public void ConeDistanceExcludesTheMirrorNappe()
+    {
+        var cone = new Fit.doubleCone
+        {
+            Apex = default,
+            Axis = new double3((double)0, (double)0, (double)1),
+            HalfAngle = (double)(math.PI_DBL / 6.0),          // 30 degrees
+        };
+
+        // Straight down the mirror axis: the nearest point of the +z nappe is the apex itself.
+        var behind = new double3((double)0, (double)0, (double)(-10));
+        Assert.That((double)cone.Distance(behind), Is.EqualTo(10.0).Within(Tol),
+            "a point behind the apex is |p - apex| away, not the mirror cone's perpendicular");
+
+        // A point genuinely on the surface still measures zero.
+        double ax = 4.0, rad = ax * math.tan(math.PI_DBL / 6.0);
+        var on = new double3((double)rad, (double)0, (double)ax);
+        Assert.That((double)cone.Distance(on), Is.EqualTo(0.0).Within(Tol), "on the nappe");
+    }
+
+    // The point-to-ellipse root solve brackets on s and iterates a bounded number of times. With a
+    // loose bracket the search degrades to bisection over [0, big²] and cannot reach the root at
+    // extreme aspect ratios -- a point exactly ON the curve then reports a large distance, which
+    // poisons every consensus and reweighting step that trusts it.
+    [Test]
+    public void EllipseDistanceSurvivesExtremeAspectRatio()
+    {
+        var e = new Fit.doubleEllipse2
+        {
+            Center = default,
+            Radii = new double2((double)1e7, (double)1),
+            Angle = (double)0,
+        };
+
+        // The minor-axis vertex, exactly on the curve.
+        Assert.That((double)e.Distance(new double2((double)0, (double)1)), Is.EqualTo(0.0).Within(DistTol),
+            "minor-axis vertex of a 1e7:1 ellipse");
+
+        // ...and the major-axis vertex, the other extreme of the same bracket.
+        Assert.That((double)e.Distance(new double2((double)1e7, (double)0)), Is.EqualTo(0.0).Within(1e-3 * 1e7),
+            "major-axis vertex of a 1e7:1 ellipse");
+    }
+
+    // irls's warm start is opt-in, and must actually do something: seeding from a good model has to
+    // change the answer when the unweighted first pass would land somewhere else. A redescending loss
+    // makes that visible -- from the contaminated unweighted fit it converges in the wrong basin.
+    [Test]
+    public void IrlsWarmStartUsesTheIncomingModel()
+    {
+        const int n = 60;
+        var pts = new NativeArray<double3>(n, Allocator.Temp);
+        for (int i = 0; i < 40; i++)                                     // a plane at z = 0
+            pts[i] = new double3((double)(i % 8), (double)(i / 8), (double)0);
+        for (int i = 40; i < n; i++)                                     // heavy contamination at z = 6
+            pts[i] = new double3((double)(i % 5), (double)(i % 4), (double)6);
+
+        var truth = new Fit.doublePlane
+        {
+            Point = default,
+            Normal = new double3((double)0, (double)0, (double)1),
+        };
+
+        var tukey = new doubleTukeyLoss((double)1);
+
+        var cold = truth;
+        Fit.irls(pts, ref cold, in tukey, maxIter: 0, warmStart: false);
+
+        var warm = truth;
+        Assert.IsTrue(Fit.irls(pts, ref warm, in tukey, maxIter: 0, warmStart: true),
+            "warm-started IRLS failed");
+
+        // The warm start keeps the plane it was handed; the cold start cannot see it at all.
+        Assert.Less(math.abs((double)warm.Point.z), 0.5,
+            "warm start must stay on the plane it was given");
+        Assert.Greater(math.abs((double)warm.Point.z - (double)cold.Point.z), 0.5,
+            "if warm and cold agree, the warm-start path is doing nothing");
 
         pts.Dispose();
     }

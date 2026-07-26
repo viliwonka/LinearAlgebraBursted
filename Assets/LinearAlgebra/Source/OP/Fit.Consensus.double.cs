@@ -271,7 +271,8 @@ namespace BULA
 
         /// <summary>IRLS over a 2D point cloud. See the 3D overload for the full contract.</summary>
         public static bool irls<TModel, TLoss>(NativeArray<double2> points, ref TModel model,
-                                               in TLoss loss, in doubleN priorW, int maxIter = 0)
+                                               in TLoss loss, in doubleN priorW, int maxIter = 0,
+                                               bool warmStart = false)
             where TModel : struct, IdoubleWeighted2
             where TLoss : struct, IdoubleRobustLoss
         {
@@ -285,7 +286,14 @@ namespace BULA
                 throw new ArgumentException("Fit.irls: priorW.N must equal points.Length");
 
             var w = new doubleN(n, Allocator.Temp);
-            for (int i = 0; i < n; i++) w[i] = hasPrior ? priorW[i] : (double)1;
+            for (int i = 0; i < n; i++)
+            {
+                double prior = hasPrior ? priorW[i] : (double)1;
+                if (!warmStart) { w[i] = prior; continue; }
+
+                double d0 = model.Distance(points[i]);
+                w[i] = loss.RhoPrime(d0 * d0) * prior;
+            }
 
             bool ok = false;
             for (int it = 0; it < maxIter; it++)
@@ -297,17 +305,18 @@ namespace BULA
                 ok = model.Refit(points, in w);
                 if (!ok) break;
 
-                double maxDelta = (double)0;
+                double maxDelta = (double)0, maxW = (double)0;
                 for (int i = 0; i < n; i++)
                 {
                     double d = model.Distance(points[i]);
                     double wNew = loss.RhoPrime(d * d);
                     if (hasPrior) wNew *= priorW[i];
                     maxDelta = math.max(maxDelta, math.abs(wNew - w[i]));
+                    maxW = math.max(maxW, wNew);
                     w[i] = wNew;
                 }
 
-                if (maxDelta <= Consts.doubleSqrtEps) break;
+                if (maxDelta <= Consts.doubleSqrtEps * math.max(maxW, (double)1)) break;
             }
 
             w.Dispose();
@@ -316,10 +325,10 @@ namespace BULA
 
         /// <summary>IRLS over a 2D point cloud with no prior weights.</summary>
         public static bool irls<TModel, TLoss>(NativeArray<double2> points, ref TModel model,
-                                               in TLoss loss, int maxIter = 0)
+                                               in TLoss loss, int maxIter = 0, bool warmStart = false)
             where TModel : struct, IdoubleWeighted2
             where TLoss : struct, IdoubleRobustLoss
-            => irls(points, ref model, in loss, default(doubleN), maxIter);
+            => irls(points, ref model, in loss, default(doubleN), maxIter, warmStart);
 
         /// <summary>RANSAC over a 2D point cloud. See the 3D overload for the full contract.</summary>
         public static RansacInfo ransac<TModel>(NativeArray<double2> points, ref TModel model,

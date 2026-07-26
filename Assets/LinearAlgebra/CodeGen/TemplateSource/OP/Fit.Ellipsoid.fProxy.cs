@@ -199,7 +199,10 @@ namespace BULA
                 rhs[a] = -c[6 + a];
             }
 
-            bool ok = QR.solveInPlace(ref Lu, ref rhs, ref sol);
+            // QRCP, not QR: the un-pivoted solve ALWAYS reports Success and back-substitutes through a
+            // zero diagonal when the form is singular, so `ok` would be a guard in name only. A
+            // centreless quadric (paraboloid, cylinder) is exactly that singular case.
+            bool ok = QRCP.solveInPlace(ref Lu, ref rhs, ref sol).rank == 3;
             if (ok)
             {
                 center = new fProxy3(sol[0], sol[1], sol[2]);
@@ -268,13 +271,28 @@ namespace BULA
             // scatter badly enough that the 6x6 eigenproblem misses the constrained root outright in
             // float. The quadratic coefficients are untouched by the map, so the ellipsoid constraint
             // survives it unchanged.
+            // WEIGHTED centroid and scale, matching the fit underneath. Normalizing over all points
+            // regardless of weight would defeat the purpose under LO-RANSAC, whose 0/1 weights leave
+            // gross outliers setting the scale and collapsing the inlier cloud toward the precision
+            // floor -- exactly the conditioning failure this normalization exists to prevent.
             fProxy3 org = default;
-            for (int i = 0; i < n; i++) org += points[i];
-            org /= (fProxy)n;
+            fProxy wsum = (fProxy)0;
+            for (int i = 0; i < n; i++)
+            {
+                fProxy wi = weighted ? math.max(w[i], (fProxy)0) : (fProxy)1;
+                org += wi * points[i];
+                wsum += wi;
+            }
+            if (!(wsum > (fProxy)0)) return false;               // every weight zero
+            org /= wsum;
 
             fProxy acc = (fProxy)0;
-            for (int i = 0; i < n; i++) acc += math.lengthsq(points[i] - org);
-            fProxy scale = math.sqrt(acc / (fProxy)n);
+            for (int i = 0; i < n; i++)
+            {
+                fProxy wi = weighted ? math.max(w[i], (fProxy)0) : (fProxy)1;
+                acc += wi * math.lengthsq(points[i] - org);
+            }
+            fProxy scale = math.sqrt(acc / wsum);
             if (!(scale > (fProxy)0)) return false;              // every point identical
             fProxy invScale = (fProxy)1 / scale;
 
@@ -374,7 +392,9 @@ namespace BULA
                     rhs[a] = S[col, 6 + a];              // row `col` of S12 is column `col` of S12ᵀ
                 }
 
-                ok = QR.solveInPlace(ref Lu, ref rhs, ref sol);
+                // Rank-revealing: S22 is the Gram of (2x, 2y, 2z, 1) and goes exactly singular on a
+                // coplanar cloud. An un-pivoted solve would report success and hand back Inf/NaN.
+                ok = QRCP.solveInPlace(ref Lu, ref rhs, ref sol).rank == 4;
                 if (ok) for (int a = 0; a < 4; a++) X[a, col] = sol[a];
             }
 
@@ -467,12 +487,16 @@ namespace BULA
             fProxy3 r2 = r * r;
             fProxy small = math.cmin(r2), big = math.cmax(r);
 
-            fProxy floor = big * Consts.fProxySqrtEps;
-            q = math.max(q, new fProxy3(floor));
+            // PER-AXIS floor -- see EllipseDistance2D for why one shared floor is wrong.
+            q = math.max(q, r * Consts.fProxySqrtEps);
 
             fProxy3 d = r2 - small;
-            fProxy lo = (fProxy)0;                                    // F -> +infinity
-            fProxy hi = big * math.length(q) + big * big;             // F(hi) < 0
+
+            // Both ends from the root condition -- see EllipseDistance2D. Three terms here, so the
+            // largest is >= 1/3 and the upper bound carries sqrt(3) rather than sqrt(2).
+            fProxy3 rq = r * q;
+            fProxy lo = math.max((fProxy)0, math.cmax(rq - d));
+            fProxy hi = math.cmax(math.sqrt((fProxy)3) * rq - d);
             fProxy s = (fProxy)0.5 * hi;
 
             for (int i = 0; i < 40; i++)

@@ -201,7 +201,10 @@ namespace BULA
                 rhs[a] = -c[6 + a];
             }
 
-            bool ok = QR.solveInPlace(ref Lu, ref rhs, ref sol);
+            // QRCP, not QR: the un-pivoted solve ALWAYS reports Success and back-substitutes through a
+            // zero diagonal when the form is singular, so `ok` would be a guard in name only. A
+            // centreless quadric (paraboloid, cylinder) is exactly that singular case.
+            bool ok = QRCP.solveInPlace(ref Lu, ref rhs, ref sol).rank == 3;
             if (ok)
             {
                 center = new float3(sol[0], sol[1], sol[2]);
@@ -270,13 +273,28 @@ namespace BULA
             // scatter badly enough that the 6x6 eigenproblem misses the constrained root outright in
             // float. The quadratic coefficients are untouched by the map, so the ellipsoid constraint
             // survives it unchanged.
+            // WEIGHTED centroid and scale, matching the fit underneath. Normalizing over all points
+            // regardless of weight would defeat the purpose under LO-RANSAC, whose 0/1 weights leave
+            // gross outliers setting the scale and collapsing the inlier cloud toward the precision
+            // floor -- exactly the conditioning failure this normalization exists to prevent.
             float3 org = default;
-            for (int i = 0; i < n; i++) org += points[i];
-            org /= (float)n;
+            float wsum = (float)0;
+            for (int i = 0; i < n; i++)
+            {
+                float wi = weighted ? math.max(w[i], (float)0) : (float)1;
+                org += wi * points[i];
+                wsum += wi;
+            }
+            if (!(wsum > (float)0)) return false;               // every weight zero
+            org /= wsum;
 
             float acc = (float)0;
-            for (int i = 0; i < n; i++) acc += math.lengthsq(points[i] - org);
-            float scale = math.sqrt(acc / (float)n);
+            for (int i = 0; i < n; i++)
+            {
+                float wi = weighted ? math.max(w[i], (float)0) : (float)1;
+                acc += wi * math.lengthsq(points[i] - org);
+            }
+            float scale = math.sqrt(acc / wsum);
             if (!(scale > (float)0)) return false;              // every point identical
             float invScale = (float)1 / scale;
 
@@ -376,7 +394,9 @@ namespace BULA
                     rhs[a] = S[col, 6 + a];              // row `col` of S12 is column `col` of S12ᵀ
                 }
 
-                ok = QR.solveInPlace(ref Lu, ref rhs, ref sol);
+                // Rank-revealing: S22 is the Gram of (2x, 2y, 2z, 1) and goes exactly singular on a
+                // coplanar cloud. An un-pivoted solve would report success and hand back Inf/NaN.
+                ok = QRCP.solveInPlace(ref Lu, ref rhs, ref sol).rank == 4;
                 if (ok) for (int a = 0; a < 4; a++) X[a, col] = sol[a];
             }
 
@@ -469,12 +489,16 @@ namespace BULA
             float3 r2 = r * r;
             float small = math.cmin(r2), big = math.cmax(r);
 
-            float floor = big * Consts.floatSqrtEps;
-            q = math.max(q, new float3(floor));
+            // PER-AXIS floor -- see EllipseDistance2D for why one shared floor is wrong.
+            q = math.max(q, r * Consts.floatSqrtEps);
 
             float3 d = r2 - small;
-            float lo = (float)0;                                    // F -> +infinity
-            float hi = big * math.length(q) + big * big;             // F(hi) < 0
+
+            // Both ends from the root condition -- see EllipseDistance2D. Three terms here, so the
+            // largest is >= 1/3 and the upper bound carries sqrt(3) rather than sqrt(2).
+            float3 rq = r * q;
+            float lo = math.max((float)0, math.cmax(rq - d));
+            float hi = math.cmax(math.sqrt((float)3) * rq - d);
             float s = (float)0.5 * hi;
 
             for (int i = 0; i < 40; i++)

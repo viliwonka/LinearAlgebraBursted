@@ -1,6 +1,44 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Fit — correctness pass on the review findings, 2026-07-26
+- 2026-07-26 | **Sampson IRLS was not Sampson-weighted.** Minimizing `sum rho(F²/g²)` through a
+  weighted ALGEBRAIC fit needs weight `rho'(d²)/g²`; the `1/g²` was missing, so the refit still
+  minimized gradient-scaled algebraic residuals. Because `fProxyL2Loss.RhoPrime == 1`, every weight
+  stayed at its initial 1, `maxDelta` was 0, and the loop broke BEFORE its first refit — making
+  `conic<L2Loss>` bit-identical to `conic` and the "L2 is not a no-op here" doc claim false in three
+  places. `QuadricSampsonL2ReducesAlgebraicBias` only asserted "not worse", so it passed vacuously;
+  it now asserts strict improvement.
+- 2026-07-26 | **The point-to-ellipse coordinate floor was shared across axes**, scaled by the LARGEST
+  radius. On a 1e7:1 ellipse that lifts the minor-axis vertex y = 1 to 3452, and the vertex measures
+  3451 from the curve it lies on. Now per-axis, each scaled by its own radius. Float-only: double's
+  smaller sqrtEps hid it, which is why the double half of the test passed while float failed.
+- 2026-07-26 | The same root solve bracketed on `[0, big²]`. Far above the root F is flat at -1, so
+  every Newton step overshoots and degrades to bisection, needing `log2(big²/s*)` halvings — past
+  roughly a 1e6 aspect ratio that exceeds the 40-iteration cap. Both ends now come from the root
+  condition itself: the terms sum to 1, so each is <= 1 (giving `s + d_i >= r_i q_i`) and the largest
+  is >= 1/k (giving `s + d_i <= sqrt(k) r_i q_i`). The bracket is a factor of sqrt(k) wide.
+- 2026-07-26 | **`bool ok = QR.solveInPlace(...)` was a guard in name only** at four sites. That
+  overload documents itself as ALWAYS reporting Success and back-substituting through a zero diagonal
+  on rank-deficient input (QR.fProxy.cs:589, :599) — exactly singular gave Inf/NaN caught downstream
+  only by luck, near-singular float gave large finite garbage certified as a fit. All four now use
+  QRCP and check `rank`.
+- 2026-07-26 | Cone `Distance` measured the infinite DOUBLE cone, so points behind the apex scored as
+  inliers on the mirror nappe. Now projects onto the generator and returns `|p - apex|` where that
+  arclength is negative. The residual functor keeps the smooth signed form deliberately — LM wants
+  the kink-free version, and the two agree everywhere near the surface.
+- 2026-07-26 | `irls`'s documented warm start did nothing: `Refit` runs before `Distance` is ever
+  read, so the incoming model had zero effect and the RANSAC-then-polish pipeline the library itself
+  recommends silently started from the contaminated unweighted fit. Now an explicit `warmStart` flag
+  seeds the first weights from the incoming model's residuals.
+- 2026-07-26 | `irls`'s convergence test compared an absolute weight delta against sqrtEps, which is
+  unreachable once weights are large (an inverse-variance prior, or L1's `0.5/floor`), so the loop
+  always ran its full budget. Now relative to the largest weight. Same fix in both Sampson loops,
+  where the new `1/g²` factor makes weight magnitude arbitrary.
+- 2026-07-26 | `EllipsoidWeighted`'s Hartley normalization ignored the weights while the fit used
+  them, so under LO-RANSAC's 0/1 weights the outliers still set the scale — defeating the
+  normalization exactly where it was needed most.
+
 ## Fit — four-agent review, 2026-07-26
 - 2026-07-26 | **`ellipsoid` returned a WRONG ellipsoid as success.** Li & Griffiths' `4J - I² > 0` is
   sufficient for an ellipsoid but not necessary: for eigenvalues (1, 1, t) it equals t(4 - t), so it

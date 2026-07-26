@@ -226,7 +226,15 @@ namespace BULA
                 double3 v = p - Apex;
                 double ax = math.dot(v, Axis);
                 double rad = math.length(v - ax * Axis);
-                return math.abs(rad * math.cos(HalfAngle) - ax * math.sin(HalfAngle));
+
+                double s = math.sin(HalfAngle), c = math.cos(HalfAngle);
+
+                // Distance to this NAPPE, not to the generating line. Projecting onto the generator
+                // gives arclength t from the apex; where that is negative the point sits beyond the
+                // apex, the nearest surface point IS the apex, and the perpendicular formula would
+                // otherwise measure the mirror cone -- scoring points behind the apex as inliers.
+                double t = rad * s + ax * c;
+                return t >= (double)0 ? math.abs(rad * c - ax * s) : math.length(v);
             }
 
             public bool Estimate(NativeArray<double3> sample)
