@@ -1,0 +1,375 @@
+using System;
+
+using Unity.Collections;
+using Unity.Mathematics;
+
+//+deleteThis
+using fProxy2 = Unity.Mathematics.float2;
+using fProxy3 = Unity.Mathematics.float3;
+//-deleteThis
+
+namespace BULA
+{
+    // ================================================================================================
+    // Consensus estimators beyond plain RANSAC. Each varies ONE axis of the same loop -- what happens
+    // after a good hypothesis (ransacLo), or how hypotheses are scored (magsac) -- so they take the
+    // same shapes and produce the same RansacInfo.
+    //
+    // Job-safe: scratch is Allocator.Temp, disposed before returning.
+    // ================================================================================================
+    public static partial class Fit
+    {
+        /// <summary>
+        /// LO-RANSAC (Chum, Matas &amp; Kittler 2003): plain RANSAC plus a LOCAL OPTIMIZATION whenever a
+        /// new best hypothesis appears -- refit on its consensus set, recompute the consensus, repeat a
+        /// few times. A model estimated from a minimal sample is the least accurate estimate obtainable
+        /// from those points, so the raw hypothesis usually sits near the right answer rather than at
+        /// it; optimizing there rather than only at the very end finds a larger, cleaner consensus,
+        /// which in turn tightens the adaptive stopping rule and cuts the draws needed.
+        ///
+        /// Needs <see cref="IfProxyWeighted3"/> rather than merely estimable, because the inner step is
+        /// a weighted refit. <paramref name="innerIter"/> &lt;= 0 uses 4, which is where the classic
+        /// result flattens out.
+        /// </summary>
+        public static RansacInfo ransacLo<TModel>(NativeArray<fProxy3> points, ref TModel model,
+                                                  fProxy threshold, int maxIter = 0, uint seed = 0,
+                                                  double confidence = 0.99, int innerIter = 0)
+            where TModel : struct, IfProxyWeighted3
+        {
+            int n = points.Length;
+            int m = model.MinimalSamples;
+            if (n < m) throw new ArgumentException("Fit.ransacLo: fewer points than MinimalSamples");
+            if (!(threshold > (fProxy)0)) throw new ArgumentException("Fit.ransacLo: threshold must be positive");
+            if (innerIter <= 0) innerIter = 4;
+
+            int budget = maxIter > 0 ? maxIter : DefaultRansacIter;
+            var rng = new Unity.Mathematics.Random(seed == 0 ? 0x9E3779B1u : seed);
+
+            var sample = new NativeArray<fProxy3>(m, Allocator.Temp);
+            var idx = new NativeArray<int>(m, Allocator.Temp);
+            var w = new fProxyN(n, Allocator.Temp);
+
+            double t2 = (double)threshold * (double)threshold;
+            double bestScore = double.MaxValue;
+            int bestInliers = 0, used = 0;
+
+            var candidate = model;
+            for (int it = 0; it < budget; it++)
+            {
+                used = it + 1;
+
+                if (!DrawDistinct(ref rng, n, m, ref idx)) continue;
+                for (int j = 0; j < m; j++) sample[j] = points[idx[j]];
+                if (!candidate.Estimate(sample)) continue;
+
+                double score = MsacScore(points, in candidate, t2, out int inl);
+                if (score >= bestScore) continue;
+
+                // LOCAL OPTIMIZATION: refit on the consensus, re-derive the consensus, repeat. Each
+                // pass is a hard 0/1 reweighting -- the inlier set itself is the weighting.
+                var local = candidate;
+                for (int lo = 0; lo < innerIter; lo++)
+                {
+                    int cnt = 0;
+                    for (int i = 0; i < n; i++)
+                    {
+                        double d = (double)local.Distance(points[i]);
+                        bool inlier = d * d <= t2;
+                        w[i] = inlier ? (fProxy)1 : (fProxy)0;
+                        if (inlier) cnt++;
+                    }
+                    if (cnt < m) break;                       // consensus collapsed; keep what we had
+
+                    var refined = local;
+                    if (!refined.Refit(points, in w)) break;
+
+                    double s2 = MsacScore(points, in refined, t2, out int inl2);
+                    if (!(s2 < score)) break;                 // no longer improving
+                    local = refined; score = s2; inl = inl2;
+                }
+
+                bestScore = score;
+                bestInliers = inl;
+                model = local;
+
+                if (maxIter <= 0)
+                {
+                    int adapt = AdaptiveIterations(inl, n, m, confidence);
+                    if (adapt < budget) budget = math.max(adapt, used);
+                }
+            }
+
+            sample.Dispose(); idx.Dispose(); w.Dispose();
+
+            return new RansacInfo
+            {
+                found = bestInliers >= m,
+                inliers = bestInliers,
+                iterations = used,
+                score = bestInliers >= m ? bestScore : double.MaxValue,
+            };
+        }
+
+        /// <summary>
+        /// MAGSAC-style consensus: instead of a single inlier threshold, the score MARGINALIZES over
+        /// the noise scale sigma across (0, <paramref name="sigmaMax"/>]. The caller then supplies a
+        /// loose UPPER BOUND on the noise rather than the exact threshold, which is the parameter
+        /// people most often get wrong -- too tight and the true model loses to an overfitted one, too
+        /// loose and junk joins the consensus.
+        ///
+        /// This marginalizes by fixed quadrature over sigma (<paramref name="sigmaSteps"/> levels, 8
+        /// by default), NOT by the closed-form incomplete-gamma weights of MAGSAC++. It delivers the
+        /// same practical benefit -- a bound instead of a threshold -- at a fraction of the machinery,
+        /// and is described that way rather than claimed as the published algorithm.
+        ///
+        /// <see cref="RansacInfo.inliers"/> is reported at sigmaMax, the most inclusive level, so it
+        /// remains a count the caller can reason about.
+        /// </summary>
+        public static RansacInfo magsac<TModel>(NativeArray<fProxy3> points, ref TModel model,
+                                                fProxy sigmaMax, int maxIter = 0, uint seed = 0,
+                                                double confidence = 0.99, int sigmaSteps = 0)
+            where TModel : struct, IfProxyEstimable3
+        {
+            int n = points.Length;
+            int m = model.MinimalSamples;
+            if (n < m) throw new ArgumentException("Fit.magsac: fewer points than MinimalSamples");
+            if (!(sigmaMax > (fProxy)0)) throw new ArgumentException("Fit.magsac: sigmaMax must be positive");
+            if (sigmaSteps <= 0) sigmaSteps = 8;
+
+            int budget = maxIter > 0 ? maxIter : DefaultRansacIter;
+            var rng = new Unity.Mathematics.Random(seed == 0 ? 0x9E3779B1u : seed);
+
+            var sample = new NativeArray<fProxy3>(m, Allocator.Temp);
+            var idx = new NativeArray<int>(m, Allocator.Temp);
+
+            double smax = (double)sigmaMax;
+            double bestScore = double.MaxValue;
+            int bestInliers = 0, used = 0;
+
+            var candidate = model;
+            for (int it = 0; it < budget; it++)
+            {
+                used = it + 1;
+
+                if (!DrawDistinct(ref rng, n, m, ref idx)) continue;
+                for (int j = 0; j < m; j++) sample[j] = points[idx[j]];
+                if (!candidate.Estimate(sample)) continue;
+
+                // Marginalized score: average the MSAC score over a ladder of thresholds. A model that
+                // is only good at one particular sigma scores worse than one good across the range,
+                // which is what removes the sensitivity to picking that sigma.
+                double score = 0;
+                int inlAtMax = 0;
+                for (int s = 1; s <= sigmaSteps; s++)
+                {
+                    double sig = smax * s / sigmaSteps;
+                    double t2 = sig * sig;
+                    score += MsacScore(points, in candidate, t2, out int inl) / t2;   // normalized per level
+                    if (s == sigmaSteps) inlAtMax = inl;
+                }
+                score /= sigmaSteps;
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestInliers = inlAtMax;
+                    model = candidate;
+
+                    if (maxIter <= 0)
+                    {
+                        int adapt = AdaptiveIterations(inlAtMax, n, m, confidence);
+                        if (adapt < budget) budget = math.max(adapt, used);
+                    }
+                }
+            }
+
+            // Refit over the consensus at sigmaMax, same reasoning as plain RANSAC: the minimal sample
+            // decides WHICH points belong, not how well the shape is placed among them.
+            bool ok = bestInliers >= m;
+            if (ok)
+            {
+                var keep = new NativeArray<fProxy3>(n, Allocator.Temp);
+                int cnt = 0;
+                double t2 = smax * smax;
+                for (int i = 0; i < n; i++)
+                {
+                    double d = (double)model.Distance(points[i]);
+                    if (d * d <= t2) keep[cnt++] = points[i];
+                }
+                if (cnt >= m)
+                {
+                    var refined = model;
+                    if (refined.Estimate(keep.GetSubArray(0, cnt))) model = refined;
+                }
+                keep.Dispose();
+            }
+
+            sample.Dispose(); idx.Dispose();
+
+            return new RansacInfo
+            {
+                found = ok,
+                inliers = bestInliers,
+                iterations = used,
+                score = ok ? bestScore : double.MaxValue,
+            };
+        }
+
+        // MSAC: sum of min(d², t²). Shared by every consensus estimator here so they rank hypotheses
+        // identically at a given threshold and differ only in the axis each one actually varies.
+        static double MsacScore<TModel>(NativeArray<fProxy3> points, in TModel model, double t2,
+                                        out int inliers)
+            where TModel : struct, IfProxyShape3
+        {
+            double score = 0;
+            int inl = 0;
+            for (int i = 0; i < points.Length; i++)
+            {
+                double d = (double)model.Distance(points[i]);
+                double d2 = d * d;
+                if (d2 <= t2) { score += d2; inl++; }
+                else score += t2;
+            }
+            inliers = inl;
+            return score;
+        }
+
+        // ---- 2D solver overloads -------------------------------------------------------------------
+        //
+        // Same drivers, different point type. Duplicated because C# cannot abstract over fProxy2 vs
+        // fProxy3 in a Burst-compatible way -- see Fit.Shapes2 for why. The SHAPES do not duplicate.
+
+        /// <summary>IRLS over a 2D point cloud. See the 3D overload for the full contract.</summary>
+        public static bool irls<TModel, TLoss>(NativeArray<fProxy2> points, ref TModel model,
+                                               in TLoss loss, in fProxyN priorW, int maxIter = 0)
+            where TModel : struct, IfProxyWeighted2
+            where TLoss : struct, IfProxyRobustLoss
+        {
+            int n = points.Length;
+            if (n < model.MinimalSamples)
+                throw new ArgumentException("Fit.irls: fewer points than the shape's MinimalSamples");
+            if (maxIter <= 0) maxIter = DefaultIrlsIter;
+
+            bool hasPrior = priorW.IsCreated;
+            if (hasPrior && priorW.N != n)
+                throw new ArgumentException("Fit.irls: priorW.N must equal points.Length");
+
+            var w = new fProxyN(n, Allocator.Temp);
+            for (int i = 0; i < n; i++) w[i] = hasPrior ? priorW[i] : (fProxy)1;
+
+            bool ok = false;
+            for (int it = 0; it < maxIter; it++)
+            {
+                fProxy sw = (fProxy)0;
+                for (int i = 0; i < n; i++) sw += w[i];
+                if (!(sw > (fProxy)0)) { ok = false; break; }
+
+                ok = model.Refit(points, in w);
+                if (!ok) break;
+
+                fProxy maxDelta = (fProxy)0;
+                for (int i = 0; i < n; i++)
+                {
+                    fProxy d = model.Distance(points[i]);
+                    fProxy wNew = loss.RhoPrime(d * d);
+                    if (hasPrior) wNew *= priorW[i];
+                    maxDelta = math.max(maxDelta, math.abs(wNew - w[i]));
+                    w[i] = wNew;
+                }
+
+                if (maxDelta <= Consts.fProxySqrtEps) break;
+            }
+
+            w.Dispose();
+            return ok;
+        }
+
+        /// <summary>IRLS over a 2D point cloud with no prior weights.</summary>
+        public static bool irls<TModel, TLoss>(NativeArray<fProxy2> points, ref TModel model,
+                                               in TLoss loss, int maxIter = 0)
+            where TModel : struct, IfProxyWeighted2
+            where TLoss : struct, IfProxyRobustLoss
+            => irls(points, ref model, in loss, default(fProxyN), maxIter);
+
+        /// <summary>RANSAC over a 2D point cloud. See the 3D overload for the full contract.</summary>
+        public static RansacInfo ransac<TModel>(NativeArray<fProxy2> points, ref TModel model,
+                                                fProxy threshold, int maxIter = 0, uint seed = 0,
+                                                double confidence = 0.99)
+            where TModel : struct, IfProxyEstimable2
+        {
+            int n = points.Length;
+            int m = model.MinimalSamples;
+            if (m < 1) throw new ArgumentException("Fit.ransac: MinimalSamples must be >= 1");
+            if (n < m) throw new ArgumentException("Fit.ransac: fewer points than MinimalSamples");
+            if (!(threshold > (fProxy)0)) throw new ArgumentException("Fit.ransac: threshold must be positive");
+
+            int budget = maxIter > 0 ? maxIter : DefaultRansacIter;
+            var rng = new Unity.Mathematics.Random(seed == 0 ? 0x9E3779B1u : seed);
+
+            var sample = new NativeArray<fProxy2>(m, Allocator.Temp);
+            var idx = new NativeArray<int>(m, Allocator.Temp);
+            var best = new NativeArray<fProxy2>(n, Allocator.Temp);
+
+            double t2 = (double)threshold * (double)threshold;
+            double bestScore = double.MaxValue;
+            int bestInliers = 0, bestCount = 0, used = 0;
+
+            var candidate = model;
+            for (int it = 0; it < budget; it++)
+            {
+                used = it + 1;
+
+                if (!DrawDistinct(ref rng, n, m, ref idx)) continue;
+                for (int j = 0; j < m; j++) sample[j] = points[idx[j]];
+                if (!candidate.Estimate(sample)) continue;
+
+                double score = 0;
+                int inl = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    double d = (double)candidate.Distance(points[i]);
+                    double d2 = d * d;
+                    if (d2 <= t2) { score += d2; inl++; }
+                    else score += t2;
+                }
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestInliers = inl;
+                    model = candidate;
+
+                    bestCount = 0;
+                    for (int i = 0; i < n; i++)
+                    {
+                        double d = (double)candidate.Distance(points[i]);
+                        if (d * d <= t2) best[bestCount++] = points[i];
+                    }
+
+                    if (maxIter <= 0)
+                    {
+                        int adapt = AdaptiveIterations(inl, n, m, confidence);
+                        if (adapt < budget) budget = math.max(adapt, used);
+                    }
+                }
+            }
+
+            bool ok = bestInliers >= m;
+            if (ok && bestCount >= m)
+            {
+                var refined = model;
+                if (refined.Estimate(best.GetSubArray(0, bestCount))) model = refined;
+            }
+
+            sample.Dispose(); idx.Dispose(); best.Dispose();
+
+            return new RansacInfo
+            {
+                found = ok,
+                inliers = bestInliers,
+                iterations = used,
+                score = ok ? bestScore : double.MaxValue,
+            };
+        }
+    }
+}

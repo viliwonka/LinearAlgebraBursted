@@ -310,6 +310,149 @@ public class floatFitShapeSolverTests
         pts.Dispose();
     }
 
+    // ---------------------------------------------------------------- 2D family
+
+    [Test]
+    public void Line2AndCircleThroughIrlsAndRansac()
+    {
+        // 2D line y = 2x + 1, IRLS.
+        var ln = new NativeArray<float2>(12, Allocator.Temp);
+        for (int i = 0; i < 12; i++) ln[i] = new float2((float)i, (float)(2 * i + 1));
+
+        var lm = new Fit.floatLine2();
+        var l2 = new floatL2Loss();
+        Assert.IsTrue(Fit.irls(ln, ref lm, in l2), "2D line IRLS failed");
+        var wantD = math.normalize(new float2((float)1, (float)2));
+        Assert.That(math.abs((double)math.dot(math.normalize(lm.Direction), wantD)),
+            Is.EqualTo(1.0).Within(Tol), "2D line direction");
+
+        // Circle through IRLS.
+        var ci = new NativeArray<float2>(16, Allocator.Temp);
+        for (int i = 0; i < 16; i++)
+        {
+            double t = 2.0 * math.PI_DBL * i / 16.0;
+            ci[i] = new float2((float)(2.0 + 5.0 * math.cos(t)), (float)(-1.0 + 5.0 * math.sin(t)));
+        }
+
+        var cm = new Fit.floatCircle();
+        Assert.IsTrue(Fit.irls(ci, ref cm, in l2), "circle IRLS failed");
+        Assert.That((double)cm.Radius, Is.EqualTo(5.0).Within(Tol), "circle radius");
+
+        // Circle through RANSAC, with junk.
+        var rng = new Unity.Mathematics.Random(64u);
+        var noisy = new NativeArray<float2>(40, Allocator.Temp);
+        for (int i = 0; i < 24; i++) noisy[i] = ci[i % 16];
+        for (int i = 24; i < 40; i++)
+            noisy[i] = new float2((float)rng.NextDouble(-10, 12), (float)rng.NextDouble(-10, 10));
+
+        var rm = new Fit.floatCircle();
+        Assert.IsTrue(Fit.ransac(noisy, ref rm, (float)0.1, 0, 3u), "2D circle RANSAC failed");
+        Assert.That((double)rm.Radius, Is.EqualTo(5.0).Within(0.2), "RANSAC circle radius");
+
+        ln.Dispose(); ci.Dispose(); noisy.Dispose();
+    }
+
+    // ---------------------------------------------------------------- LO-RANSAC / MAGSAC
+
+    static NativeArray<float3> NoisyPlaneWithJunk(int inliers, int outliers, double noise, uint seed)
+    {
+        var pts = new NativeArray<float3>(inliers + outliers, Allocator.Temp);
+        var rng = new Unity.Mathematics.Random(seed);
+        for (int i = 0; i < inliers; i++)
+            pts[i] = new float3((float)rng.NextDouble(-5, 5), (float)rng.NextDouble(-5, 5),
+                                 (float)rng.NextDouble(-noise, noise));
+        for (int i = 0; i < outliers; i++)
+            pts[inliers + i] = new float3((float)rng.NextDouble(-5, 5), (float)rng.NextDouble(-5, 5),
+                                           (float)rng.NextDouble(-5, 5));
+        return pts;
+    }
+
+    // LO-RANSAC's claim: optimizing locally on each new best consensus finds a better model than
+    // plain RANSAC at the SAME draw budget, because a minimal-sample hypothesis is the least accurate
+    // estimate obtainable from those points. Compared at a fixed budget so the comparison is about
+    // the local optimization and not about who was allowed more draws.
+    [Test]
+    public void LoRansacBeatsPlainRansacAtEqualBudget()
+    {
+        var pts = NoisyPlaneWithJunk(50, 30, 0.05, 313u);
+        var want = new float3((float)0, (float)0, (float)1);
+
+        var plain = new Fit.floatPlane();
+        var pi = Fit.ransac(pts, ref plain, (float)0.15, 30, 88u);
+        Assert.IsTrue(pi, "plain RANSAC failed");
+        double errPlain = math.acos(math.min(math.abs(math.dot(math.normalize(plain.Normal), want)), 1.0));
+
+        var lo = new Fit.floatPlane();
+        var li = Fit.ransacLo(pts, ref lo, (float)0.15, 30, 88u);
+        Assert.IsTrue(li, "LO-RANSAC failed");
+        double errLo = math.acos(math.min(math.abs(math.dot(math.normalize(lo.Normal), want)), 1.0));
+
+        Assert.LessOrEqual(errLo, errPlain + 1e-9,
+            $"LO-RANSAC ({errLo}) should be at least as good as plain ({errPlain}) at equal budget");
+        Assert.GreaterOrEqual(li.inliers, pi.inliers,
+            "local optimization should not shrink the consensus");
+
+        pts.Dispose();
+    }
+
+    // MAGSAC's selling point: it takes an UPPER BOUND on the noise rather than a tuned threshold, so
+    // the same loose bound works across noise levels where a fixed threshold would have to change.
+    [Test]
+    public void MagsacToleratesALooseNoiseBound()
+    {
+        var want = new float3((float)0, (float)0, (float)1);
+
+        // One generous sigmaMax, two very different true noise levels.
+        foreach (double noise in new[] { 0.02, 0.30 })
+        {
+            var pts = NoisyPlaneWithJunk(50, 25, noise, 707u);
+
+            var model = new Fit.floatPlane();
+            var info = Fit.magsac(pts, ref model, (float)0.6, 0, 21u);
+
+            Assert.IsTrue(info, $"MAGSAC found no consensus at noise {noise} ({info.ToString()})");
+            double err = math.acos(math.min(math.abs(math.dot(math.normalize(model.Normal), want)), 1.0));
+            Assert.Less(err, 0.1, $"MAGSAC should recover the plane at noise {noise}, err {err}");
+
+            pts.Dispose();
+        }
+    }
+
+    [Test]
+    public void ConsensusEstimatorsAreDeterministic()
+    {
+        var pts = NoisyPlaneWithJunk(40, 20, 0.05, 5u);
+
+        var a = new Fit.floatPlane(); var ia = Fit.ransacLo(pts, ref a, (float)0.15, 25, 1234u);
+        var b = new Fit.floatPlane(); var ib = Fit.ransacLo(pts, ref b, (float)0.15, 25, 1234u);
+        Assert.AreEqual(ia.inliers, ib.inliers, "LO-RANSAC inliers must match at one seed");
+        Assert.That((double)math.length(a.Normal - b.Normal), Is.EqualTo(0.0).Within(0.0),
+            "LO-RANSAC must be bit-identical at one seed");
+
+        var c = new Fit.floatPlane(); var ic = Fit.magsac(pts, ref c, (float)0.5, 25, 99u);
+        var d = new Fit.floatPlane(); var id = Fit.magsac(pts, ref d, (float)0.5, 25, 99u);
+        Assert.AreEqual(ic.inliers, id.inliers, "MAGSAC inliers must match at one seed");
+        Assert.That((double)math.length(c.Normal - d.Normal), Is.EqualTo(0.0).Within(0.0),
+            "MAGSAC must be bit-identical at one seed");
+
+        pts.Dispose();
+    }
+
+    [Test]
+    public void ConsensusGuardsThrow()
+    {
+        var few = new NativeArray<float3>(2, Allocator.Temp);
+        var model = new Fit.floatPlane();
+        Assert.Throws<ArgumentException>(() => { var m = model; Fit.ransacLo(few, ref m, (float)0.1); });
+        Assert.Throws<ArgumentException>(() => { var m = model; Fit.magsac(few, ref m, (float)0.1); });
+        few.Dispose();
+
+        var ok = PlaneCloud(3, (float)0);
+        Assert.Throws<ArgumentException>(() => { var m = model; Fit.ransacLo(ok, ref m, (float)0); });
+        Assert.Throws<ArgumentException>(() => { var m = model; Fit.magsac(ok, ref m, (float)(-1)); });
+        ok.Dispose();
+    }
+
     [Test]
     public void IrlsGuardsThrow()
     {
