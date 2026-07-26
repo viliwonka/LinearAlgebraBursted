@@ -366,6 +366,26 @@ public class fProxyFitTests
         pts.Dispose(); c.Dispose();
     }
 
+    // `classify` documents itself as scale-invariant, so a big sphere must classify exactly like a
+    // small one. It is a real trap rather than a hypothetical: `quadric` returns UNIT-NORM
+    // coefficients, so a sphere of radius R has quadratic entries of order 1/R², and a zero test
+    // floored at an absolute constant swallows the whole quadratic form once R grows.
+    [Test]
+    public void ClassifyIsScaleInvariantForLargeShapes()
+    {
+        foreach (double R in new[] { 1.0, 60.0, 500.0 })
+        {
+            var pts = SampleEllipsoid(R, R, R, default, 8, 12);
+
+            var c = new fProxyN(10, Allocator.Temp);
+            Assert.IsTrue(Fit.quadric(pts, ref c), $"quadric fit failed at R = {R}");
+            Assert.AreEqual(QuadricKind.Ellipsoid, Fit.classify(in c),
+                $"a sphere of radius {R} is an ellipsoid at every scale");
+
+            pts.Dispose(); c.Dispose();
+        }
+    }
+
     // A quadric fitted to points sampled from a true ellipsoid must classify as one; points sampled
     // from a one-sheet hyperboloid must not. Classification is the whole reason `quadric` is one
     // entry point rather than a solver per shape, so it gets both a positive and a negative case.
@@ -1598,6 +1618,27 @@ public class fProxyFitTests
         Assert.That(got[0], Is.EqualTo(1.5).Within(AlgTol), "smallest semi-axis");
         Assert.That(got[1], Is.EqualTo(2.0).Within(AlgTol), "middle semi-axis");
         Assert.That(got[2], Is.EqualTo(3.0).Within(AlgTol), "largest semi-axis");
+
+        pts.Dispose();
+    }
+
+    // Li & Griffiths' 4J - I² > 0 is SUFFICIENT for an ellipsoid but not NECESSARY. For a quadratic
+    // form with eigenvalues (1, 1, t) it equals t(4 - t), so it goes negative once t >= 4 -- and
+    // since eigenvalues go as 1/radius², that is an axis ratio of only 2:1. If the constraint really
+    // does exclude flatter ellipsoids, this exact, noise-free 2.5:1 cloud cannot be fitted.
+    [Test]
+    public void EllipsoidHandlesFlatterThanTwoToOne()
+    {
+        var o = new fProxy3((fProxy)0, (fProxy)0, (fProxy)0);
+        var pts = SampleEllipsoid(1.0, 1.0, 0.4, o, 10, 16);
+
+        Assert.IsTrue(Fit.ellipsoid(pts, out _, out fProxy3 rad, out _, out _),
+            "a 2.5:1 oblate ellipsoid must be fittable");
+
+        var got = new double[] { (double)rad.x, (double)rad.y, (double)rad.z };
+        Array.Sort(got);
+        Assert.That(got[0], Is.EqualTo(0.4).Within(AlgTol), "polar semi-axis");
+        Assert.That(got[2], Is.EqualTo(1.0).Within(AlgTol), "equatorial semi-axis");
 
         pts.Dispose();
     }

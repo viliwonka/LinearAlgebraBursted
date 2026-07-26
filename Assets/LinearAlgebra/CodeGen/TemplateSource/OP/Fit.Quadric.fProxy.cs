@@ -287,7 +287,9 @@ namespace BULA
         static bool QuadricWeighted(NativeArray<fProxy3> points, in fProxyN w, ref fProxyN coeffs)
         {
             int n = points.Length;
-            if (n < 9) throw new ArgumentException("Fit.quadric: points.Length must be >= 9");
+            // 10, not 9: the design has one column per coefficient and SVD.thin needs at least as many
+            // rows as columns. A 9-point call used to reach the SVD and throw from inside it.
+            if (n < 10) throw new ArgumentException("Fit.quadric: points.Length must be >= 10");
             if (coeffs.N != 10) throw new ArgumentException("Fit.quadric: coeffs.N must be 10");
             bool weighted = w.IsCreated;
 
@@ -338,7 +340,12 @@ namespace BULA
             if (Eigen.symmetricInPlace(ref Q, ref ev, ref V))
             {
                 fProxy scale = math.max(math.max(math.abs(ev[0]), math.abs(ev[1])), math.abs(ev[2]));
-                fProxy zero = math.max(scale, (fProxy)1) * Consts.fProxySqrtEps;
+
+                // Purely RELATIVE to the largest eigenvalue. Flooring the scale at 1 would make this
+                // an absolute test whenever every eigenvalue is below 1 -- which is the normal case,
+                // since `quadric` returns unit-norm coefficients and a sphere of radius R has
+                // quadratic entries of order 1/R². A large sphere would then classify as Degenerate.
+                fProxy zero = scale * Consts.fProxySqrtEps;
 
                 int pos = 0, neg = 0, nul = 0;
                 for (int i = 0; i < 3; i++)

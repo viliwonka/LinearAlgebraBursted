@@ -142,6 +142,17 @@ namespace BULA
         /// the axis, not a canonical one -- the position along the axis is a gauge freedom.
         /// Requires points.Length &gt;= 7. False means LM did not converge.
         /// </summary>
+        // Runs LM with the caller's iteration cap, or defers to nlsSolve's own default when it is
+        // <= 0. The mapping has to happen here: nlsSolve THROWS on maxIter < 1, so forwarding a
+        // defaulted 0 straight through would turn "use the default" into an exception.
+        static bool SolveLM<TF, TLoss>(ref TF f, ref doubleN p, int m, in TLoss loss, int maxIter)
+            where TF : struct, IdoubleResidualFunction
+            where TLoss : struct, IdoubleRobustLoss
+            => maxIter > 0
+                ? Optimize.nlsSolve(ref f, ref p, m, in loss,
+                                    Consts.doubleSqrtEps, Consts.doubleEpsilon, maxIter)
+                : Optimize.nlsSolve(ref f, ref p, m, in loss);
+
         public static bool cylinder(NativeArray<double3> points, ref double3 axisPoint,
                                     ref double3 axisDir, ref double radius, int maxIter = 0)
         {
@@ -166,7 +177,7 @@ namespace BULA
             p[6] = radius;
 
             var f = new doubleCylinderResidual { Points = points };
-            var info = Optimize.nlsSolve(ref f, ref p, points.Length, in loss);
+            var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             axisPoint = new double3(p[0], p[1], p[2]);
             axisDir = math.normalize(new double3(p[3], p[4], p[5]));
@@ -207,7 +218,7 @@ namespace BULA
             p[6] = halfAngle;
 
             var f = new doubleConeResidual { Points = points };
-            var info = Optimize.nlsSolve(ref f, ref p, points.Length, in loss);
+            var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             apex = new double3(p[0], p[1], p[2]);
             axisDir = math.normalize(new double3(p[3], p[4], p[5]));
@@ -246,7 +257,7 @@ namespace BULA
             p[6] = majorRadius; p[7] = minorRadius;
 
             var f = new doubleTorusResidual { Points = points };
-            var info = Optimize.nlsSolve(ref f, ref p, points.Length, in loss);
+            var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             center = new double3(p[0], p[1], p[2]);
             axisDir = math.normalize(new double3(p[3], p[4], p[5]));
@@ -285,7 +296,7 @@ namespace BULA
             p[6] = radius;
 
             var f = new doubleCapsuleResidual { Points = points };
-            var info = Optimize.nlsSolve(ref f, ref p, points.Length, in loss);
+            var info = SolveLM(ref f, ref p, points.Length, in loss, maxIter);
 
             a = new double3(p[0], p[1], p[2]);
             b = new double3(p[3], p[4], p[5]);

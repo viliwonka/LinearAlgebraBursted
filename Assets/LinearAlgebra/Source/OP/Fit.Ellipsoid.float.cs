@@ -55,7 +55,7 @@ namespace BULA
                 float3 cross = new float3(Radii.y * Radii.z, Radii.z * Radii.x, Radii.x * Radii.y);
                 float bound = math.cmax(cross);
 
-                UniformDirection(ref rng, out float3 n);
+                float3 n = default;
                 for (int i = 0; i < SampleTries; i++)
                 {
                     UniformDirection(ref rng, out n);
@@ -131,11 +131,14 @@ namespace BULA
         /// Requires points.Length &gt;= 9. False means the factorization failed or no
         /// constraint-satisfying solution exists, typically a degenerate cloud (all points coplanar).
         ///
-        /// The constraint costs accuracy: this route needs the SCATTER matrix for its generalized
-        /// eigenproblem, and forming it squares the condition number, so the floor is that of a
-        /// normal-equations method -- around 1e-8 relative in double, where <see cref="quadric"/>
-        /// factors the design directly and does better. Far below the noise of any measured cloud,
-        /// but not interchangeable at machine precision.
+        /// Runs <see cref="quadric"/> first and keeps that answer whenever it is already an ellipsoid;
+        /// the constraint is applied only to rescue clouds the plain fit gets wrong. Two consequences
+        /// worth knowing. Accuracy on the constrained path is a normal-equations floor -- around 1e-8
+        /// relative in double, since that route needs the SCATTER matrix and forming it squares the
+        /// condition number -- while the common path inherits <see cref="quadric"/>'s better accuracy.
+        /// And the constraint can only represent ellipsoids within roughly a 2:1 axis ratio, so a
+        /// FLATTER cloud that also defeats the plain fit comes back as the nearest ellipsoid the
+        /// constraint admits rather than the true one.
         /// </summary>
         public static bool ellipsoid(NativeArray<float3> points, ref floatN coeffs)
             => EllipsoidWeighted(points, default(floatN), ref coeffs);
@@ -242,6 +245,24 @@ namespace BULA
             if (n < 9) throw new ArgumentException("Fit.ellipsoid: points.Length must be >= 9");
             if (coeffs.N != 10) throw new ArgumentException("Fit.ellipsoid: coeffs.N must be 10");
             bool weighted = w.IsCreated;
+
+            // UNCONSTRAINED FIRST, constraint as the repair. Li & Griffiths' 4J - I² > 0 is sufficient
+            // for an ellipsoid but not necessary: for a form with eigenvalues (1, 1, t) it equals
+            // t(4 - t), so it excludes everything past a 2:1 axis ratio, and a fit driven onto that
+            // boundary returns the nearest REPRESENTABLE ellipsoid rather than the right one -- a
+            // wrong answer reported as success. Raising k does not help; at k > 4 the constraint
+            // starts admitting hyperboloids, which is why 4 is the published choice.
+            //
+            // So the plain fit runs first and is kept whenever it already lands on an ellipsoid: it
+            // factors the design directly (better conditioned than the scatter route below) and has
+            // no representable-shape limit. The constrained fit is what rescues the clouds the plain
+            // one gets wrong -- which is the job it was actually added for.
+            // Gated on 10 points, not 9: the plain fit needs one row per coefficient, while the
+            // constrained route below closes at 9 because the constraint supplies the tenth equation.
+            // That gap is exactly why MinimalSamples is 9, so a RANSAC minimal sample lands here.
+            if (n >= 10 && QuadricWeighted(points, in w, ref coeffs)
+                        && classify(in coeffs) == QuadricKind.Ellipsoid)
+                return true;
 
             // Hartley-style normalization: fit on points translated to the centroid and scaled to unit
             // RMS radius, then map the coefficients back. The design entries are FOURTH powers of the

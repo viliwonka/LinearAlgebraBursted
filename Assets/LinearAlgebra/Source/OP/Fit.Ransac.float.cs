@@ -72,24 +72,22 @@ namespace BULA
             double bestScore = double.MaxValue;
             int bestInliers = 0, bestCount = 0, used = 0;
 
-            var candidate = model;
             for (int it = 0; it < budget; it++)
             {
                 used = it + 1;
 
                 if (!DrawDistinct(ref rng, n, m, ref idx)) continue;
                 for (int j = 0; j < m; j++) sample[j] = points[idx[j]];
+
+                // A FRESH model per draw, never a carried-over one. The shapes that warm-start LM
+                // from their own current fields (cylinder/cone/torus/capsule) would otherwise
+                // continue the previous hypothesis instead of seeding from this sample: the draws
+                // stop being independent, which is the premise the adaptive stopping rule rests on,
+                // and a bad early hypothesis becomes the basin every later one converges into.
+                var candidate = default(TModel);
                 if (!candidate.Estimate(sample)) continue;
 
-                double score = 0;
-                int inl = 0;
-                for (int i = 0; i < n; i++)
-                {
-                    double d = (double)candidate.Distance(points[i]);
-                    double d2 = d * d;
-                    if (d2 <= t2) { score += d2; inl++; }
-                    else score += t2;
-                }
+                double score = MsacScore(points, in candidate, t2, out int inl);
 
                 if (score < bestScore)
                 {

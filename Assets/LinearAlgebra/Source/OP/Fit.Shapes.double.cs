@@ -288,17 +288,18 @@ namespace BULA
             {
                 OrthoBasis(Axis, out double3 u, out double3 v);
 
-                double theta = (double)0;
+                double theta = (double)0, ct = (double)1;
                 double bound = MajorRadius + MinorRadius;
                 for (int i = 0; i < SampleTries; i++)
                 {
                     theta = rng.NextDouble((double)0, (double)(2.0 * math.PI_DBL));
-                    if (rng.NextDouble() * bound <= MajorRadius + MinorRadius * math.cos(theta)) break;
+                    ct = math.cos(theta);
+                    if (rng.NextDouble() * bound <= MajorRadius + MinorRadius * ct) break;
                 }
 
                 double phi = rng.NextDouble((double)0, (double)(2.0 * math.PI_DBL));
                 double3 radial = math.cos(phi) * u + math.sin(phi) * v;
-                return Center + (MajorRadius + MinorRadius * math.cos(theta)) * radial
+                return Center + (MajorRadius + MinorRadius * ct) * radial
                               + MinorRadius * math.sin(theta) * Axis;
             }
 

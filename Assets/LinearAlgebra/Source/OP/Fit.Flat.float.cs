@@ -75,7 +75,7 @@ namespace BULA
             // with the caller's weights carried into both.
             public bool Refit(NativeArray<float3> points, in floatN w)
             {
-                if (!WeightedPlane(points, in w, out float3 c0, out float3 n)) return false;
+                if (!SubspaceRefit(points, in w, 3, out float3 c0, out float3 n)) return false;
                 OrthoBasis(n, out float3 u, out float3 v);
 
                 var flat = Project(points, c0, u, v);
@@ -169,7 +169,7 @@ namespace BULA
 
             public bool Refit(NativeArray<float3> points, in floatN w)
             {
-                if (!WeightedPlane(points, in w, out float3 c0, out float3 n)) return false;
+                if (!SubspaceRefit(points, in w, 3, out float3 c0, out float3 n)) return false;
                 OrthoBasis(n, out float3 u, out float3 v);
 
                 var flat = Project(points, c0, u, v);
@@ -220,25 +220,6 @@ namespace BULA
                 RadiusA = math.abs(p[9]);
                 RadiusB = math.abs(p[10]);
             }
-        }
-
-        // Weighted best-fit plane: centroid and least-variance axis of the weighted covariance.
-        static bool WeightedPlane(NativeArray<float3> points, in floatN w,
-                                  out float3 origin, out float3 normal)
-        {
-            var flat = points.Reinterpret<float3, float>();
-            var mean = new floatN(3, Allocator.Temp);
-            var C = new floatMxN(3, 3, Allocator.Temp);
-            var eig = new floatN(3, Allocator.Temp);
-            var V = new floatMxN(3, 3, Allocator.Temp);
-
-            bool ok = SubspaceFitWeighted(flat, points.Length, 3, in w, ref mean, ref C, ref eig, ref V);
-
-            origin = new float3(mean[0], mean[1], mean[2]);
-            normal = ok ? new float3(V[0, 2], V[1, 2], V[2, 2]) : default;
-
-            mean.Dispose(); C.Dispose(); eig.Dispose(); V.Dispose();
-            return ok;
         }
 
         // Distance from (x, y), both non-negative, to the axis-aligned ellipse (a, b).

@@ -74,7 +74,7 @@ namespace BULA
             // with the caller's weights carried into both.
             public bool Refit(NativeArray<fProxy3> points, in fProxyN w)
             {
-                if (!WeightedPlane(points, in w, out fProxy3 c0, out fProxy3 n)) return false;
+                if (!SubspaceRefit(points, in w, 3, out fProxy3 c0, out fProxy3 n)) return false;
                 OrthoBasis(n, out fProxy3 u, out fProxy3 v);
 
                 var flat = Project(points, c0, u, v);
@@ -168,7 +168,7 @@ namespace BULA
 
             public bool Refit(NativeArray<fProxy3> points, in fProxyN w)
             {
-                if (!WeightedPlane(points, in w, out fProxy3 c0, out fProxy3 n)) return false;
+                if (!SubspaceRefit(points, in w, 3, out fProxy3 c0, out fProxy3 n)) return false;
                 OrthoBasis(n, out fProxy3 u, out fProxy3 v);
 
                 var flat = Project(points, c0, u, v);
@@ -219,25 +219,6 @@ namespace BULA
                 RadiusA = math.abs(p[9]);
                 RadiusB = math.abs(p[10]);
             }
-        }
-
-        // Weighted best-fit plane: centroid and least-variance axis of the weighted covariance.
-        static bool WeightedPlane(NativeArray<fProxy3> points, in fProxyN w,
-                                  out fProxy3 origin, out fProxy3 normal)
-        {
-            var flat = points.Reinterpret<fProxy3, fProxy>();
-            var mean = new fProxyN(3, Allocator.Temp);
-            var C = new fProxyMxN(3, 3, Allocator.Temp);
-            var eig = new fProxyN(3, Allocator.Temp);
-            var V = new fProxyMxN(3, 3, Allocator.Temp);
-
-            bool ok = SubspaceFitWeighted(flat, points.Length, 3, in w, ref mean, ref C, ref eig, ref V);
-
-            origin = new fProxy3(mean[0], mean[1], mean[2]);
-            normal = ok ? new fProxy3(V[0, 2], V[1, 2], V[2, 2]) : default;
-
-            mean.Dispose(); C.Dispose(); eig.Dispose(); V.Dispose();
-            return ok;
         }
 
         // Distance from (x, y), both non-negative, to the axis-aligned ellipse (a, b).

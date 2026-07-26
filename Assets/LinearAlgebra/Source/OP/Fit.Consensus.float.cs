@@ -39,6 +39,7 @@ namespace BULA
         {
             int n = points.Length;
             int m = model.MinimalSamples;
+            if (m < 1) throw new ArgumentException("Fit.ransacLo: MinimalSamples must be >= 1");
             if (n < m) throw new ArgumentException("Fit.ransacLo: fewer points than MinimalSamples");
             if (!(threshold > (float)0)) throw new ArgumentException("Fit.ransacLo: threshold must be positive");
             if (innerIter <= 0) innerIter = 4;
@@ -54,13 +55,14 @@ namespace BULA
             double bestScore = double.MaxValue;
             int bestInliers = 0, used = 0;
 
-            var candidate = model;
             for (int it = 0; it < budget; it++)
             {
                 used = it + 1;
 
                 if (!DrawDistinct(ref rng, n, m, ref idx)) continue;
                 for (int j = 0; j < m; j++) sample[j] = points[idx[j]];
+
+                var candidate = default(TModel);      // fresh per draw -- see Fit.ransac
                 if (!candidate.Estimate(sample)) continue;
 
                 double score = MsacScore(points, in candidate, t2, out int inl);
@@ -133,6 +135,7 @@ namespace BULA
         {
             int n = points.Length;
             int m = model.MinimalSamples;
+            if (m < 1) throw new ArgumentException("Fit.magsac: MinimalSamples must be >= 1");
             if (n < m) throw new ArgumentException("Fit.magsac: fewer points than MinimalSamples");
             if (!(sigmaMax > (float)0)) throw new ArgumentException("Fit.magsac: sigmaMax must be positive");
             if (sigmaSteps <= 0) sigmaSteps = 8;
@@ -147,13 +150,14 @@ namespace BULA
             double bestScore = double.MaxValue;
             int bestInliers = 0, used = 0;
 
-            var candidate = model;
             for (int it = 0; it < budget; it++)
             {
                 used = it + 1;
 
                 if (!DrawDistinct(ref rng, n, m, ref idx)) continue;
                 for (int j = 0; j < m; j++) sample[j] = points[idx[j]];
+
+                var candidate = default(TModel);      // fresh per draw -- see Fit.ransac
                 if (!candidate.Estimate(sample)) continue;
 
                 // Marginalized score: average the MSAC score over a ladder of thresholds. A model that
@@ -222,11 +226,36 @@ namespace BULA
                                         out int inliers)
             where TModel : struct, IfloatShape3
         {
+            // Local copy, not the `in` parameter: an interface call on an `in` generic struct is not
+            // provably non-mutating, so the compiler copies the whole shape on EVERY invocation --
+            // once per point here, and magsac calls this once per sigma level per draw.
+            var s = model;
+
             double score = 0;
             int inl = 0;
             for (int i = 0; i < points.Length; i++)
             {
-                double d = (double)model.Distance(points[i]);
+                double d = (double)s.Distance(points[i]);
+                double d2 = d * d;
+                if (d2 <= t2) { score += d2; inl++; }
+                else score += t2;
+            }
+            inliers = inl;
+            return score;
+        }
+
+        /// <summary>2D <see cref="MsacScore{TModel}(NativeArray{float3}, in TModel, double, out int)"/>.</summary>
+        static double MsacScore<TModel>(NativeArray<float2> points, in TModel model, double t2,
+                                        out int inliers)
+            where TModel : struct, IfloatShape2
+        {
+            var s = model;
+
+            double score = 0;
+            int inl = 0;
+            for (int i = 0; i < points.Length; i++)
+            {
+                double d = (double)s.Distance(points[i]);
                 double d2 = d * d;
                 if (d2 <= t2) { score += d2; inl++; }
                 else score += t2;
@@ -315,24 +344,17 @@ namespace BULA
             double bestScore = double.MaxValue;
             int bestInliers = 0, bestCount = 0, used = 0;
 
-            var candidate = model;
             for (int it = 0; it < budget; it++)
             {
                 used = it + 1;
 
                 if (!DrawDistinct(ref rng, n, m, ref idx)) continue;
                 for (int j = 0; j < m; j++) sample[j] = points[idx[j]];
+
+                var candidate = default(TModel);      // fresh per draw -- see the 3D overload
                 if (!candidate.Estimate(sample)) continue;
 
-                double score = 0;
-                int inl = 0;
-                for (int i = 0; i < n; i++)
-                {
-                    double d = (double)candidate.Distance(points[i]);
-                    double d2 = d * d;
-                    if (d2 <= t2) { score += d2; inl++; }
-                    else score += t2;
-                }
+                double score = MsacScore(points, in candidate, t2, out int inl);
 
                 if (score < bestScore)
                 {

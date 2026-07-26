@@ -288,17 +288,18 @@ namespace BULA
             {
                 OrthoBasis(Axis, out fProxy3 u, out fProxy3 v);
 
-                fProxy theta = (fProxy)0;
+                fProxy theta = (fProxy)0, ct = (fProxy)1;
                 fProxy bound = MajorRadius + MinorRadius;
                 for (int i = 0; i < SampleTries; i++)
                 {
                     theta = rng.NextFProxy((fProxy)0, (fProxy)(2.0 * math.PI_DBL));
-                    if (rng.NextFProxy() * bound <= MajorRadius + MinorRadius * math.cos(theta)) break;
+                    ct = math.cos(theta);
+                    if (rng.NextFProxy() * bound <= MajorRadius + MinorRadius * ct) break;
                 }
 
                 fProxy phi = rng.NextFProxy((fProxy)0, (fProxy)(2.0 * math.PI_DBL));
                 fProxy3 radial = math.cos(phi) * u + math.sin(phi) * v;
-                return Center + (MajorRadius + MinorRadius * math.cos(theta)) * radial
+                return Center + (MajorRadius + MinorRadius * ct) * radial
                               + MinorRadius * math.sin(theta) * Axis;
             }
 

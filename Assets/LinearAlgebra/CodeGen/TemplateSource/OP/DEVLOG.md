@@ -1,6 +1,38 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Fit — four-agent review, 2026-07-26
+- 2026-07-26 | **`ellipsoid` returned a WRONG ellipsoid as success.** Li & Griffiths' `4J - I² > 0` is
+  sufficient for an ellipsoid but not necessary: for eigenvalues (1, 1, t) it equals t(4 - t), so it
+  excludes everything past a 2:1 axis ratio. A (1, 1, 0.4) cloud came back as (1, 1, 0.5) — clipped
+  to the boundary of the representable set, reported `true`. Raising k does NOT fix it: at k > 4 the
+  constraint starts accepting hyperboloids (λ = (1,1,-ε) gives `kJ - I² → k - 4`), which is why 4 is
+  the published choice. Restructured to run the UNCONSTRAINED fit first and keep it when it already
+  classifies as an ellipsoid, applying the constraint only as the repair for clouds the plain fit
+  gets wrong. Gated on n >= 10, since the constrained route is what makes MinimalSamples 9.
+- 2026-07-26 | **RANSAC hypotheses were not independent.** All four consensus drivers hoisted
+  `var candidate = model;` OUTSIDE the draw loop, and cylinder/cone/torus/capsule `Estimate` forwards
+  its own current fields as the LM warm start (auto-seeding only on a zero axis). So every hypothesis
+  after the first continued the PREVIOUS one instead of seeding from its own minimal sample: a bad
+  early hypothesis became the basin all later ones converged into, and the adaptive stopping rule
+  lost the independence premise it is derived from. Now `default(TModel)` per draw. The final
+  consensus refit stays warm — refining from the winner is the point there.
+- 2026-07-26 | `classify`'s zero threshold was `max(scale, 1) * sqrtEps`, i.e. ABSOLUTE whenever every
+  eigenvalue is below 1 — the normal case, since `quadric` returns unit-norm coefficients and a
+  sphere of radius R has quadratic entries of order 1/R². A radius-60 sphere classified as
+  `Degenerate` in float, against a doc promising scale invariance. Now purely relative.
+- 2026-07-26 | `Fit.quadric` guarded `n >= 9` but its n x 10 design needs `SVD.thin`'s rows >= cols,
+  so exactly 9 points threw from inside the SVD. Guard corrected to 10.
+- 2026-07-26 | `maxIter` was declared and silently ignored by all 8 `Fit.Solid` entry points. Forwarded
+  via `SolveLM`; the `<= 0 → default` mapping has to live there because `nlsSolve` THROWS on
+  `maxIter < 1`, so passing a defaulted 0 straight through would turn "use the default" into a throw.
+- 2026-07-26 | `MsacScore` took `in TModel` and called `Distance` on it, so the compiler copied the
+  whole shape struct once PER POINT (magsac pays that per sigma level per draw). Local copy now.
+  Plain `ransac` also inlined its own copy of the scoring loop instead of calling it; both dimensions
+  now route through one helper, so a scoring change cannot reach two of the three estimators only.
+- 2026-07-26 | `WeightedPlane` was a byte-for-byte duplicate of `SubspaceRefit(points, w, 3, ...)`,
+  written during the flat-shapes work without noticing the sibling. Deleted.
+
 ## Fit.Ellipsoid / Fit.Sample
 - 2026-07-26 | Ellipsoid added as the CONSTRAINED counterpart to `quadric`, via Li & Griffiths (2004)
   `4J - I² = 1`. `k = 4` is fixed rather than exposed: any `k > 3` forces an ellipsoid, but a caller
