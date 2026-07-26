@@ -13,15 +13,19 @@ namespace LinearAlgebraDemos
     /// Player-driven hover tank (BF2142-style) on FOUR SERVO THRUSTERS, each with its own servo angle
     /// and throttle. Drop on an empty GameObject and press play.
     ///
-    /// W/S drive · A/D yaw the hull · Mouse Y elevates the gun · SPACE air brake.
+    /// Mouse X turns the hull and mouse Y elevates the gun, with the cursor captured; ESC releases it
+    /// to the on-screen panel and back. W/S drive · A/D yaw as well · SPACE brakes both forward speed
+    /// and yaw rate. Hands off, weak idle damping settles the tank instead of letting it free-float.
     ///
     /// The gun is FIXED in traverse — elevation only — so azimuth is the hull's job, and every axis
     /// except elevation reaches the thrusters through one control-allocation solve:
     ///
     /// 1. A 6-state discrete LQR (height error, vertical velocity, roll, roll rate, pitch, pitch rate)
     ///    sensed from 4 corner-down raycasts, producing vertical/roll/pitch acceleration commands.
-    /// 2. A control-allocation QP that turns those commands plus the driver's forward/yaw/brake demand
-    ///    into the 8 thruster controls, under servo range/rate and thrust range/rate limits. See
+    /// 2. A control-allocation QP that turns those commands plus the driver's forward/yaw demand — and
+    ///    the braking and idle-damping terms, which are wrench demands like everything else rather
+    ///    than forces written onto the rigid body — into the 8 thruster controls, under servo
+    ///    range/rate and thrust range/rate limits. See
     ///    <see cref="ThrusterAllocation"/>: 8 controls against 5 reachable wrench components, so the
     ///    rig is over-actuated and the solve is what decides how the work is shared.
     /// 3. A 2-state double-integrator servo LQR for barrel elevation, the one channel with its own
@@ -33,7 +37,7 @@ namespace LinearAlgebraDemos
     ///
     /// There is no lateral force anywhere in the rig: every thrust vector lies in a forward-up plane,
     /// so their sum does too. Sideways motion is reachable only through roll, quadcopter-style, which
-    /// is why there is no strafe binding and why the air brake only opposes along-track speed.
+    /// is why there is no strafe binding and why braking and damping only oppose along-track speed.
     ///
     /// Self-assembles ground, hull, gun, target and a chase camera in <see cref="Start"/> (sceneless,
     /// like the other demos).
@@ -68,9 +72,18 @@ namespace LinearAlgebraDemos
         [Range(1000f, 30000f)] public float brakeForce = 8000f;
         [Tooltip("Braking force per m/s of along-track speed, so the brake eases off as the tank slows.")]
         [Range(200f, 20000f)] public float brakeGain = 3000f;
+        [Tooltip("Braking yaw moment per rad/s of yaw rate. Capped at steerTorque, so the brake can never out-demand the stick.")]
+        [Range(500f, 30000f)] public float brakeYawGain = 12000f;
+        [Tooltip("Steer command per unit of accumulated mouse X. A locked cursor gives unbounded deltas, so this wants to stay small.")]
+        [Range(0.01f, 1f)] public float lookSensitivity = 0.12f;
+        [Tooltip("Idle forward damping, newtons per m/s. Fades out as W/S is pressed; 0 lets the tank free-float.")]
+        [Range(0f, 5000f)] public float idleLinearGain = 1500f;
+        [Tooltip("Idle yaw damping, newton-metres per rad/s. Fades out as steering appears; 0 lets the tank free-float.")]
+        [Range(0f, 15000f)] public float idleAngularGain = 6500f;
 
         [Header("Gun elevation (mouse Y -> servo LQR)")]
-        [Range(0.5f, 20f)] public float mouseSensitivity = 4f;
+        [Tooltip("Degrees of elevation per unit of mouse Y delta.")]
+        [Range(0.2f, 15f)] public float elevationSensitivity = 2f;
         [Range(1f, 200f)] public float qPitchAngle = 60f;
         [Range(0.1f, 50f)] public float qPitchRate = 8f;
         [Range(0.01f, 10f)] public float rPitchTorque = 0.3f;
@@ -101,7 +114,7 @@ namespace LinearAlgebraDemos
         [Range(0.05f, 2f)] public float orbitSpeed = 0.5f;
 
         static readonly string[] MountNames = { "FL", "FR", "BL", "BR" };
-        static readonly Rect PanelRect = new Rect(10, 10, 520, 560);
+        static readonly Rect PanelRect = new Rect(10, 10, 520, 620);
 
         // self-assembled scene objects (Start)
         GameObject groundGO, hullGO, hullVisualGO, barrelPivotGO, barrelGO, autoTargetGO;
@@ -117,8 +130,12 @@ namespace LinearAlgebraDemos
         Vector3 orbitCenter;
         float orbitAngle;
         float elevationDeg;        // mouse-driven setpoint the barrel LQR tracks
+        float lookX;               // mouse X accumulated since the last fixed step
+        bool mouseCaptured = true; // driving mode; ESC releases the cursor to the panel
         float layErrorRad;         // cached for the readout; the job consumes it as an input
-        float lastSteer;           // cached for the readout: who owned the yaw axis this step
+        // last step's inputs and measured rates, cached so the readout can name the axis owner
+        float lastSteer, lastForwardSpeed, lastYawRate;
+        bool lastBrake;
 
         // hover loop buffers (persistent — never allocated inside the job)
         floatMxN hoverK;
@@ -310,13 +327,42 @@ namespace LinearAlgebraDemos
             }
         }
 
+        void OnEnable() => ApplyCursor(mouseCaptured);
+
+        // Never leave the editor holding a captured cursor when play mode ends. mouseCaptured itself
+        // is left alone, so re-enabling comes back in whichever mode the driver chose.
+        void OnDisable() => ApplyCursor(false);
+
+        void SetCapture(bool captured)
+        {
+            mouseCaptured = captured;
+            ApplyCursor(captured);
+        }
+
+        void ApplyCursor(bool captured)
+        {
+            Cursor.lockState = captured ? CursorLockMode.Locked : CursorLockMode.None;
+            Cursor.visible = !captured;
+
+            // Locking recentres the cursor, which shows up as one large delta on the next frame.
+            // Dropping whatever has accumulated keeps that out of the yaw demand.
+            lookX = 0f;
+        }
+
         void Update()
         {
-            // Mouse deltas are per rendered frame, so they are accumulated here rather than in
-            // FixedUpdate. The panel is full of sliders: dragging one must not also elevate the gun.
-            Vector2 cursor = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
-            if (!PanelRect.Contains(cursor))
-                elevationDeg += Input.GetAxis("Mouse Y") * mouseSensitivity;
+            // Cursor capture IS the driving mode: released, the panel takes the mouse and neither the
+            // gun nor the hull responds to it, which is what keeps the sliders usable.
+            if (Input.GetKeyDown(KeyCode.Escape)) SetCapture(!mouseCaptured);
+
+            if (mouseCaptured)
+            {
+                // Both axes come from the same per-rendered-frame delta source and are accumulated
+                // here for the next fixed step. A locked cursor makes those deltas unbounded, so the
+                // two sensitivities carry all of the feel.
+                lookX += Input.GetAxis("Mouse X");
+                elevationDeg += Input.GetAxis("Mouse Y") * elevationSensitivity;
+            }
 
             elevationDeg = Mathf.Clamp(elevationDeg, barrelMinPitchDeg, barrelMaxPitchDeg);
         }
@@ -355,7 +401,15 @@ namespace LinearAlgebraDemos
                 layErrorRad = -math.atan2(localDir.x, localDir.z);
             }
 
-            lastSteer = Input.GetAxis("Horizontal");
+            // Mouse X and A/D are two INPUT DEVICES on one axis, so they sum and clamp. That is not
+            // the auto-lay situation: this is one command being expressed two ways, not two
+            // controllers each closing a feedback loop on the same axis.
+            float mouseSteer = lookX * lookSensitivity;
+            lookX = 0f;
+            lastSteer = Mathf.Clamp(Input.GetAxis("Horizontal") + mouseSteer, -1f, 1f);
+            lastBrake = Input.GetKey(KeyCode.Space);
+            lastForwardSpeed = Vector3.Dot(rb.linearVelocity, hullGO.transform.forward);
+            lastYawRate = Vector3.Dot(rb.angularVelocity, hullGO.transform.up);
 
             var job = new HoverTankStepJob
             {
@@ -372,7 +426,7 @@ namespace LinearAlgebraDemos
                 QLayAngle = qLayAngle, QLayRate = qLayRate, RLayTorque = rLayTorque,
                 MaxLayAccel = maxLayAccel, YawInertia = yawInertia,
                 LayError = layErrorRad,
-                LayRate = Vector3.Dot(rb.angularVelocity, hullGO.transform.up),
+                YawRate = lastYawRate,
                 AutoLay = autoLay && aimTarget != null,
 
                 Controls = controls, AllocOut = allocOut, WrenchOut = wrenchOut,
@@ -380,9 +434,10 @@ namespace LinearAlgebraDemos
                 MountX = mountX, MountY = mountY, MountZ = mountZ, MountArm = mountArm,
                 DriveInput = Input.GetAxis("Vertical"), DriveForce = driveForce,
                 SteerInput = lastSteer, SteerTorque = steerTorque,
-                BrakeInput = Input.GetKey(KeyCode.Space),
-                BrakeForce = brakeForce, BrakeGain = brakeGain,
-                ForwardSpeed = Vector3.Dot(rb.linearVelocity, hullGO.transform.forward),
+                BrakeInput = lastBrake,
+                BrakeForce = brakeForce, BrakeGain = brakeGain, BrakeYawGain = brakeYawGain,
+                IdleLinearGain = idleLinearGain, IdleAngularGain = idleAngularGain,
+                ForwardSpeed = lastForwardSpeed,
                 TiltCos = Vector3.Dot(hullGO.transform.up, Vector3.up),
 
                 BarrelState = barrelState, BarrelK = barrelK, BarrelLqrState = barrelLqr, BarrelOut = barrelOut,
@@ -518,14 +573,15 @@ namespace LinearAlgebraDemos
         {
             GUILayout.BeginArea(PanelRect, GUI.skin.box);
             GUILayout.Label($"Hover tank — {frameMs:F3} ms/frame (3x6 hover LQR + 8-control allocation QP + 2x servo LQR)");
-            GUILayout.Label("W/S drive    A/D yaw    Mouse Y elevation    SPACE air brake");
+            GUILayout.Label($"Mouse turn/elevate    W/S drive    A/D yaw    SPACE brake    ESC {(mouseCaptured ? "release cursor" : "RESUME DRIVING")}");
             GUILayout.Label($"hover: converged={hoverOut[1] == 1f}  iters={hoverOut[0]:F0}  residual={hoverOut[2]:E1}   state: h={hoverState[0]:F2} roll={hoverState[2] * Mathf.Rad2Deg:F1} pitch={hoverState[4] * Mathf.Rad2Deg:F1}");
 
             QPInfo alloc = allocOut[0];
             GUILayout.Label($"alloc QP: {alloc.status}  pivots={alloc.iterations}  obj={alloc.objective:E2}");
             GUILayout.Label($"force  N   lift {wrenchOut[5]:F0}/{wrenchOut[0]:F0}   drive {wrenchOut[6]:F0}/{wrenchOut[1]:F0}   (achieved/demanded)");
             GUILayout.Label($"torque Nm  pitch {wrenchOut[7]:F0}/{wrenchOut[2]:F0}   yaw {wrenchOut[8]:F0}/{wrenchOut[3]:F0}   roll {wrenchOut[9]:F0}/{wrenchOut[4]:F0}");
-            GUILayout.Label($"yaw axis: {YawOwner()}    elevation {barrelState[0] * Mathf.Rad2Deg:F1} deg -> {elevationDeg:F1} (converged={barrelOut[0] == 1f})");
+            GUILayout.Label($"yaw axis: {YawOwner()}   speed {lastForwardSpeed,5:F1} m/s   yaw rate {lastYawRate * Mathf.Rad2Deg,5:F0} deg/s");
+            GUILayout.Label($"elevation {barrelState[0] * Mathf.Rad2Deg:F1} -> {elevationDeg:F1} deg (converged={barrelOut[0] == 1f})   mouse {(mouseCaptured ? "CAPTURED" : "released")}");
 
             for (int i = 0; i < 4; i++)
             {
@@ -548,7 +604,11 @@ namespace LinearAlgebraDemos
 
             targetRideHeight = LabeledSlider($"ride height {targetRideHeight:F2}", targetRideHeight, 0.5f, 6f);
             qTilt = LabeledSlider($"Q tilt {qTilt:F0}", qTilt, 1f, 300f);
+            lookSensitivity = LabeledSlider($"mouse sens {lookSensitivity:F2}", lookSensitivity, 0.01f, 1f);
             brakeForce = LabeledSlider($"brake force {brakeForce:F0}N", brakeForce, 1000f, 30000f);
+            brakeYawGain = LabeledSlider($"brake yaw {brakeYawGain:F0}Nm/(rad/s)", brakeYawGain, 500f, 30000f);
+            idleLinearGain = LabeledSlider($"idle linear {idleLinearGain:F0}N/(m/s)", idleLinearGain, 0f, 5000f);
+            idleAngularGain = LabeledSlider($"idle yaw {idleAngularGain:F0}Nm/(rad/s)", idleAngularGain, 0f, 15000f);
             thrusters.servoMaxDeg = LabeledSlider($"servo range +{thrusters.servoMaxDeg:F0}deg", thrusters.servoMaxDeg, 0f, 85f);
             thrusters.servoRateDeg = LabeledSlider($"servo rate {thrusters.servoRateDeg:F0}deg/s", thrusters.servoRateDeg, 15f, 720f);
             thrusters.thrustRate = LabeledSlider($"thrust rate {thrusters.thrustRate:F0}N/s", thrusters.thrustRate, 2000f, 400000f);
@@ -575,18 +635,25 @@ namespace LinearAlgebraDemos
             GUILayout.EndArea();
         }
 
-        // Yaw has exactly one owner per step (see HoverTankStepJob.Execute). Yaw authority is bought
-        // with forward thrust the hover loop also wants, so the allocation can simply fail to deliver
-        // the demanded moment — say so rather than letting the gun drift off aim unexplained.
+        // What is driving the yaw demand this step (see HoverTankStepJob.Execute), and whether the
+        // allocation actually delivered it. Yaw authority is bought with forward thrust the hover loop
+        // also wants, so a hard mouse flick or a fast target can exceed what the rig can produce — say
+        // so rather than letting the hull drift off aim unexplained.
         string YawOwner()
         {
-            if (Mathf.Abs(lastSteer) > HoverTankStepJob.StickDeadzone) return "DRIVER (A/D)";
-            if (!autoLay) return "idle (auto-lay off)";
-            if (Mathf.Abs(layErrorRad) * Mathf.Rad2Deg < onTargetDeg) return "auto-lay: ON TARGET";
+            bool steering = Mathf.Abs(lastSteer) > HoverTankStepJob.StickDeadzone;
+
+            string owner;
+            if (lastBrake) owner = "BRAKE (space)";
+            else if (steering) owner = "DRIVER (mouse + A/D)";
+            else if (!mouseCaptured) owner = "cursor released";
+            else if (!autoLay) owner = idleAngularGain > 0f ? "idle damping" : "free";
+            else if (Mathf.Abs(layErrorRad) * Mathf.Rad2Deg < onTargetDeg) owner = "auto-lay: ON TARGET";
+            else owner = "auto-lay: SLEWING";
 
             float torqueScale = hullMass * -Physics.gravity.y * mountArm;
-            return Mathf.Abs(wrenchOut[8] - wrenchOut[3]) > 0.05f * torqueScale
-                ? "auto-lay: YAW SATURATED" : "auto-lay: SLEWING";
+            bool shortfall = Mathf.Abs(wrenchOut[8] - wrenchOut[3]) > 0.05f * torqueScale;
+            return shortfall ? owner + "  [YAW SATURATED]" : owner;
         }
 
         static float LabeledSlider(string label, float v, float lo, float hi)
@@ -635,17 +702,20 @@ namespace LinearAlgebraDemos
         public float QLayAngle, QLayRate, RLayTorque, MaxLayAccel, YawInertia;
         /// <summary>Heading error in radians, positive when the nose must swing left.</summary>
         public float LayError;
-        /// <summary>Hull yaw rate about its own up axis, radians per second.</summary>
-        public float LayRate;
         public bool AutoLay;
 
         // driver
         public float DriveInput, DriveForce;
-        public float SteerInput, SteerTorque;
+        /// <summary>Mouse X and A/D already summed and clamped to [-1, 1].</summary>
+        public float SteerInput;
+        public float SteerTorque;
         public bool BrakeInput;
-        public float BrakeForce, BrakeGain;
+        public float BrakeForce, BrakeGain, BrakeYawGain;
+        public float IdleLinearGain, IdleAngularGain;
         /// <summary>Hull velocity along its own forward axis, m/s — the only component the rig can brake.</summary>
         public float ForwardSpeed;
+        /// <summary>Hull yaw rate about its own up axis, rad/s. Feeds both the lay LQR and the damping.</summary>
+        public float YawRate;
 
         // thruster allocation
         public NativeArray<float> Controls;
@@ -726,25 +796,49 @@ namespace LinearAlgebraDemos
             LayOut[0] = infoLay ? 1f : 0f;
             Al.Dispose(); Bl.Dispose(); Ql.Dispose(); Rl.Dispose();
 
-            float uLay = math.clamp(-(LayK[0, 0] * LayError + LayK[0, 1] * LayRate), -MaxLayAccel, MaxLayAccel);
+            float uLay = math.clamp(-(LayK[0, 0] * LayError + LayK[0, 1] * YawRate), -MaxLayAccel, MaxLayAccel);
 
-            // ---- driver demand: exactly one owner per axis ----
-            // The air brake takes the forward axis outright. Braking while also commanding thrust is a
-            // contradiction, and summing them would just hide the brake behind the throttle. Only the
-            // ALONG-TRACK component is opposed: the rig has no lateral force, so sideways drift is not
-            // brakeable here at all. The gain makes it ease off as the tank slows instead of chattering
-            // at rest, and BrakeForce caps it below the drive authority so attitude control keeps room.
-            float drive = BrakeInput
-                ? -math.clamp(BrakeGain * ForwardSpeed, -BrakeForce, BrakeForce)
-                : math.clamp(DriveInput, -1f, 1f) * DriveForce;
-
-            // Yaw likewise has one owner at a time: the stick takes it the moment it leaves the
-            // deadzone, and auto-lay only holds it while armed AND the stick is centred. Blending the
-            // two would let them fight over the same servos mid-turn.
+            // ---- driver demand ----
+            // Everything here is a WRENCH DEMAND handed to the allocation, never a force written onto
+            // the rigid body: braking and damping are solved for like every other axis, so the servos
+            // visibly swing to produce them.
+            //
+            // The brake and the idle damping COMPOSE AS A LADDER rather than summing. SPACE is the
+            // strong explicit brake and subsumes idle damping entirely; otherwise idle damping fades
+            // out in proportion to how hard the axis is being commanded. Two damping terms live at
+            // once would feel mushy and would make the brake read weaker than it is.
+            //
+            // Only the ALONG-TRACK and YAW rates are damped. The rig has no lateral force, so sideways
+            // drift is structurally unreachable; pitch and roll are already regulated by the hover
+            // loop, and a second controller on those axes would fight it.
+            float driveIn = math.clamp(DriveInput, -1f, 1f);
             float steer = math.clamp(SteerInput, -1f, 1f);
-            float yawDemand = math.abs(steer) > StickDeadzone
-                ? steer * SteerTorque
-                : (AutoLay ? YawInertia * uLay : 0f);
+
+            float drive, yawDemand;
+            if (BrakeInput)
+            {
+                // Both gains ease off as the rate drops, so the brake settles instead of chattering at
+                // rest. BrakeForce stays under the drive authority and the yaw brake is capped at the
+                // stick's own authority, so braking can never out-demand ordinary driving and starve
+                // attitude control.
+                drive = -math.clamp(BrakeGain * ForwardSpeed, -BrakeForce, BrakeForce);
+                yawDemand = -math.clamp(BrakeYawGain * YawRate, -SteerTorque, SteerTorque);
+            }
+            else
+            {
+                // Idle damping is a D term on the demand, deliberately gentle: this is a hover vehicle
+                // and the glide is the point, so it settles over a second or two rather than stopping dead.
+                float linearDamp = -math.clamp(IdleLinearGain * ForwardSpeed, -DriveForce, DriveForce);
+                float yawDamp = -math.clamp(IdleAngularGain * YawRate, -SteerTorque, SteerTorque);
+
+                drive = driveIn * DriveForce + (1f - math.abs(driveIn)) * linearDamp;
+
+                yawDemand = math.abs(steer) > StickDeadzone
+                    ? steer * SteerTorque + (1f - math.abs(steer)) * yawDamp
+                    // Auto-lay's own gain already carries a yaw-rate term, so it owns the axis outright
+                    // while armed and hands-off; layering idle damping on top would just fight it.
+                    : (AutoLay ? YawInertia * uLay : yawDamp);
+            }
 
             // ---- demanded hull-frame wrench ----
             // The gravity feedforward is divided by the hull's tilt cosine because thrust is bolted to
