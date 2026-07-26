@@ -2056,6 +2056,37 @@ public class fProxyFitTests
 
     // ------------------------------------------------------- review regressions
 
+    // The conic design entries are FOURTH powers of the coordinates, so an off-origin cloud
+    // conditions the scatter like offset^4 -- 6e10 at offset 500, past what float carries. Without
+    // normalization this returns garbage or false for a shape it fits perfectly at the origin.
+    [Test]
+    public void ConicSurvivesAnOffOriginCloud()
+    {
+        foreach (double off in new[] { 0.0, 500.0 })
+        {
+            const int n = 40;
+            var pts = new NativeArray<fProxy2>(n, Allocator.Temp);
+            for (int i = 0; i < n; i++)
+            {
+                double t = 2.0 * math.PI_DBL * i / n;
+                pts[i] = new fProxy2((fProxy)(off + 3.0 * math.cos(t)), (fProxy)(off + 2.0 * math.sin(t)));
+            }
+
+            Assert.IsTrue(Fit.ellipse(pts, out fProxy2 c, out fProxy2 rad, out _),
+                $"ellipse fit failed at offset {off}");
+
+            Assert.That((double)c.x, Is.EqualTo(off).Within(1e-3 * math.max(off, 1.0)), $"centre x at {off}");
+            Assert.That((double)c.y, Is.EqualTo(off).Within(1e-3 * math.max(off, 1.0)), $"centre y at {off}");
+
+            double big = math.max((double)rad.x, (double)rad.y);
+            double small = math.min((double)rad.x, (double)rad.y);
+            Assert.That(big, Is.EqualTo(3.0).Within(1e-2), $"major semi-axis at {off}");
+            Assert.That(small, Is.EqualTo(2.0).Within(1e-2), $"minor semi-axis at {off}");
+
+            pts.Dispose();
+        }
+    }
+
     // A cone is ONE nappe. The perpendicular-to-the-generating-line formula measures the infinite
     // DOUBLE cone, so a point behind the apex scores as though it lay on the mirror surface -- which
     // makes RANSAC count phantom inliers there. Apex nearest means the distance is just |p - apex|.

@@ -17,13 +17,15 @@ namespace BULA
         // Solve Ux = b for x
         // U may be tall (M_Rows >= N_Cols): only the top N_Cols x N_Cols block is read,
         // which is the R block produced by QR on overdetermined systems.
-        // PRECONDITION: U is non-singular — every diagonal U[r,r] must be nonzero. A zero diagonal
-        // (a singular/rank-deficient triangular factor) divides by zero and yields Inf/NaN; this
-        // primitive does not guard it. For rank-deficient systems use the rank-revealing paths
+        // U must be non-singular. Reports DirectSolveStatus.Singular when it is not: a zero diagonal
+        // would divide by zero and yield Inf/NaN, and a caller reading the status as a guard would
+        // accept that as a solution.
+        // Detection is EXACT-zero (and NaN) only, plus a finiteness check on the result — the cases
+        // that definitively produce garbage. A merely ILL-CONDITIONED factor still solves and still
+        // reports Success; for genuinely rank-deficient systems use the rank-revealing paths
         // (QRCP.decompInPlace, SVD.pinvSolve, or CHOP.solveInPlace).
-        // Always reports DirectSolveStatus.Success — this primitive assumes a valid (non-singular)
-        // triangular factor and does not itself detect a bad one.
-        /// <param name="b_to_x">On entry b; on exit the solution x.</param>
+        /// <param name="b_to_x">On entry b; on exit the solution x — contents undefined unless the
+        /// returned status is Success.</param>
         public static unsafe DirectSolveInfo triUpper(ref doubleMxN U, ref doubleN b_to_x)
         {
             if(U.M_Rows < U.N_Cols)
@@ -39,14 +41,28 @@ namespace BULA
             double* Up = U.Data.Ptr;
             double* bp = b_to_x.Data.Ptr;
 
-            for (int r = n - 1; r >= 0; r--)
+            bool ok = true;
+            for (int r = n - 1; r >= 0 && ok; r--)
             {
                 double* Ur = Up + (long)r * stride;
+
+                // Zero, NaN and +/-Inf all rejected. !(|d| > 0) covers zero and NaN (NaN fails every
+                // comparison); the isfinite covers the infinities, which would otherwise pass the
+                // magnitude test and drive x[r] silently to zero rather than to anything detectable.
+                if (!(math.abs(Ur[r]) > (double)0) || !math.isfinite(Ur[r])) { ok = false; break; }
+
                 double sum = UnsafeOP.vecDotRange(Ur, bp, r + 1, n);
                 bp[r] = (bp[r] - sum) / Ur[r];
             }
 
-            return new DirectSolveInfo { status = DirectSolveStatus.Success };
+            // The substitution can still overflow to Inf even with every diagonal nonzero, so the
+            // status is only honest if it reflects the numbers actually produced.
+            for (int r = 0; r < n && ok; r++)
+                if (!math.isfinite(bp[r])) ok = false;
+
+            return new DirectSolveInfo {
+                status = ok ? DirectSolveStatus.Success : DirectSolveStatus.Singular
+            };
         }
 
         // Solve Lx = b for x

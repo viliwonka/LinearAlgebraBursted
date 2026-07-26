@@ -105,11 +105,38 @@ namespace BULA
             for (int a = 0; a < 3; a++)
                 for (int b = 0; b < 3; b++) { S1[a, b] = (float)0; S2[a, b] = (float)0; S3[a, b] = (float)0; }
 
+            // Hartley normalization, for the same reason the 3D ellipsoid route has it: the design
+            // entries are FOURTH powers of the coordinates, so a cloud sitting even a few units off
+            // the origin conditions the scatter blocks past what float can carry. A unit circle
+            // centred at (500, 500) faces a scatter conditioned like offset^4. Weighted, to match the
+            // fit underneath -- an unweighted centroid would let outliers set the scale under IRLS.
+            float2 org = default;
+            float wsum = (float)0;
+            for (int i = 0; i < n; i++)
+            {
+                float wi = weighted ? math.max(w[i], (float)0) : (float)1;
+                org += wi * points[i];
+                wsum += wi;
+            }
+            if (!(wsum > (float)0)) { S1.Dispose(); S2.Dispose(); S3.Dispose(); return false; }
+            org /= wsum;
+
+            float acc = (float)0;
+            for (int i = 0; i < n; i++)
+            {
+                float wi = weighted ? math.max(w[i], (float)0) : (float)1;
+                acc += wi * math.lengthsq(points[i] - org);
+            }
+            float scale = math.sqrt(acc / wsum);
+            if (!(scale > (float)0)) { S1.Dispose(); S2.Dispose(); S3.Dispose(); return false; }
+            float invScale = (float)1 / scale;
+
             var q = new floatN(3, Allocator.Temp);
             var l = new floatN(3, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
-                float x = points[i].x, y = points[i].y;
+                float2 p = (points[i] - org) * invScale;
+                float x = p.x, y = p.y;
                 q[0] = x * x; q[1] = x * y; q[2] = y * y;
                 l[0] = x;     l[1] = y;     l[2] = (float)1;
 
@@ -150,11 +177,31 @@ namespace BULA
                 }
 
                 ok = ConicEigenvector(in Mp, ref coeffs, in T);
+                if (ok) DenormalizeConic(ref coeffs, org, scale);
             }
 
             q.Dispose(); l.Dispose();
             S1.Dispose(); S2.Dispose(); S3.Dispose(); T.Dispose(); M.Dispose(); Mp.Dispose();
             return ok;
+        }
+
+        // Undoes the fit's x' = (x - org) / scale substitution. Multiplying the conic through by
+        // scale² clears every denominator and coefficients are defined only up to overall scale, so
+        // no divisions are needed. The QUADRATIC block comes through untouched, which is why the
+        // ellipse constraint 4AC - B² survives the map.
+        static void DenormalizeConic(ref floatN c, float2 org, float scale)
+        {
+            float A = c[0], B = c[1], C = c[2];
+            float tx = org.x, ty = org.y;
+
+            float qx = A * tx + (float)0.5 * B * ty;          // (Q·org)_x
+            float qy = (float)0.5 * B * tx + C * ty;          // (Q·org)_y
+            float orgQorg = tx * qx + ty * qy;
+            float gt = c[3] * tx + c[4] * ty;
+
+            c[3] = (float)(-2) * qx + scale * c[3];
+            c[4] = (float)(-2) * qy + scale * c[4];
+            c[5] = orgQorg - scale * gt + scale * scale * c[5];
         }
 
         /// <summary>

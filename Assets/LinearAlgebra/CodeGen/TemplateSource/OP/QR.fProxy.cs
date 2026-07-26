@@ -596,8 +596,10 @@ namespace BULA
         // is the minimal-scratch path; for a zero-alloc path via a reusable cache struct, use the
         // ref fProxyQRCache overload instead (this fused kernel never forms Q, so that overload does
         // NOT gain the level-3 blocked kernel — see the scratch-contract note at the top of this class).
-        // Always reports DirectSolveStatus.Success — see the PRECONDITION note above: a
-        // rank-deficient A silently divides by a zero R diagonal instead of being detected here.
+        // Reports DirectSolveStatus.Singular when R has an exactly-zero (or NaN) diagonal, or when the
+        // back-substitution produces a non-finite result — see Blas.triUpper. A merely ILL-CONDITIONED
+        // A still solves and still reports Success, so the PRECONDITION above stands: for genuinely
+        // rank-deficient work use the rank-revealing paths.
         /// <param name="A">Destroyed; contents undefined after return (becomes R + stored reflectors scratch).</param>
         /// <param name="b">Destroyed; contents undefined after return (becomes Qᵀb scratch).</param>
         /// <param name="x">Output only; prior contents ignored; safe to allocate with uninit: true.</param>
