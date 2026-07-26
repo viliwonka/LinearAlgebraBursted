@@ -169,48 +169,51 @@ namespace BULA
             center = default; radii = default; angle = (double)0;
 
             var c = new doubleN(6, Allocator.Temp);
-            bool ok = conic(points, ref c);
+            bool ok = conic(points, ref c) && EllipseFromConic(in c, out center, out radii, out angle);
+            c.Dispose();
+            return ok;
+        }
 
+        /// <summary>
+        /// Geometry of the ellipse described by conic coefficients (A..F): centre, semi-axes, and the
+        /// rotation of the axis whose length is radii.x. False when they do not describe a real
+        /// ellipse. Shared by <see cref="ellipse"/> and the flat 3D ellipse's weighted refit.
+        /// </summary>
+        internal static bool EllipseFromConic(in doubleN c, out double2 center,
+                                              out double2 radii, out double angle)
+        {
+            center = default; radii = default; angle = (double)0;
+
+            double A = c[0], B = c[1], C = c[2], D = c[3], E = c[4], F = c[5];
+
+            double det = (double)4 * A * C - B * B;
+            if (math.abs(det) <= Consts.doubleEpsilon) return false;
+
+            double cx = ((double)2 * C * (-D) - B * (-E)) / det;
+            double cy = ((double)2 * A * (-E) - B * (-D)) / det;
+            center = new double2(cx, cy);
+
+            double Fc = F + (double)0.5 * (D * cx + E * cy);
+
+            var Q = new doubleMxN(2, 2, Allocator.Temp);
+            var ev = new doubleN(2, Allocator.Temp);
+            var V = new doubleMxN(2, 2, Allocator.Temp);
+            Q[0, 0] = A; Q[0, 1] = (double)0.5 * B;
+            Q[1, 0] = (double)0.5 * B; Q[1, 1] = C;
+
+            bool ok = Eigen.symmetricInPlace(ref Q, ref ev, ref V);
             if (ok)
             {
-                double A = c[0], B = c[1], C = c[2], D = c[3], E = c[4], F = c[5];
-
-                // Centre solves [[2A, B],[B, 2C]] c = [-D, -E].
-                double det = (double)4 * A * C - B * B;
-                if (math.abs(det) <= Consts.doubleEpsilon) ok = false;
-                else
+                double r0 = -Fc / ev[0], r1 = -Fc / ev[1];
+                if (r0 > (double)0 && r1 > (double)0)
                 {
-                    double cx = ((double)2 * C * (-D) - B * (-E)) / det;
-                    double cy = ((double)2 * A * (-E) - B * (-D)) / det;
-                    center = new double2(cx, cy);
-
-                    // Translate the constant term to the centre, then the semi-axes follow from the
-                    // eigenvalues of the quadratic form [[A, B/2],[B/2, C]].
-                    double Fc = F + (double)0.5 * (D * cx + E * cy);
-
-                    var Q = new doubleMxN(2, 2, Allocator.Temp);
-                    var ev = new doubleN(2, Allocator.Temp);
-                    var V = new doubleMxN(2, 2, Allocator.Temp);
-                    Q[0, 0] = A; Q[0, 1] = (double)0.5 * B;
-                    Q[1, 0] = (double)0.5 * B; Q[1, 1] = C;
-
-                    if (Eigen.symmetricInPlace(ref Q, ref ev, ref V))
-                    {
-                        double r0 = -Fc / ev[0], r1 = -Fc / ev[1];
-                        if (r0 > (double)0 && r1 > (double)0)
-                        {
-                            radii = new double2(math.sqrt(r0), math.sqrt(r1));
-                            angle = math.atan2(V[1, 0], V[0, 0]);
-                        }
-                        else ok = false;                       // not a real ellipse
-                    }
-                    else ok = false;
-
-                    Q.Dispose(); ev.Dispose(); V.Dispose();
+                    radii = new double2(math.sqrt(r0), math.sqrt(r1));
+                    angle = math.atan2(V[1, 0], V[0, 0]);
                 }
+                else ok = false;
             }
 
-            c.Dispose();
+            Q.Dispose(); ev.Dispose(); V.Dispose();
             return ok;
         }
 

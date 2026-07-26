@@ -309,6 +309,177 @@ public class fProxyFitShapeSolverTests
         pts.Dispose();
     }
 
+    // ---------------------------------------------------------------- flat shapes in 3D
+
+    // A circle lying in a TILTED plane -- neither a 2D circle nor a sphere. Points are generated in
+    // that plane exactly, so centre, normal and radius must all come back.
+    static NativeArray<fProxy3> TiltedCircle(fProxy3 c, fProxy3 u, fProxy3 v, double r, int n)
+    {
+        var pts = new NativeArray<fProxy3>(n, Allocator.Temp);
+        for (int i = 0; i < n; i++)
+        {
+            double t = 2.0 * math.PI_DBL * i / n;
+            pts[i] = c + (fProxy)(r * math.cos(t)) * u + (fProxy)(r * math.sin(t)) * v;
+        }
+        return pts;
+    }
+
+    [Test]
+    public void Circle3RecoversTiltedCircle()
+    {
+        var n0 = math.normalize(new fProxy3((fProxy)0.4, (fProxy)(-0.3), (fProxy)1));
+        Fit.OrthoBasis(n0, out fProxy3 u, out fProxy3 v);
+        var c0 = new fProxy3((fProxy)1, (fProxy)2, (fProxy)(-1));
+
+        var pts = TiltedCircle(c0, u, v, 2.5, 16);
+
+        var model = new Fit.fProxyCircle3();
+        Assert.IsTrue(model.Estimate(pts), "circle3 estimate failed");
+
+        Assert.That((double)model.Radius, Is.EqualTo(2.5).Within(Tol), "radius");
+        Assert.That((double)math.length(model.Center - c0), Is.EqualTo(0.0).Within(Tol), "centre");
+        Assert.That(math.abs((double)math.dot(model.Normal, n0)), Is.EqualTo(1.0).Within(Tol), "normal");
+
+        // Distance must penalize BOTH errors: a point pushed off the plane is not on the circle even
+        // though its in-plane radius is exactly right.
+        fProxy3 onCircle = c0 + (fProxy)2.5 * u;
+        Assert.That((double)model.Distance(onCircle), Is.EqualTo(0.0).Within(Tol), "on-circle point");
+        Assert.That((double)model.Distance(onCircle + (fProxy)0.5 * n0), Is.EqualTo(0.5).Within(Tol),
+            "a point lifted off the plane must be 0.5 away, not 0");
+
+        pts.Dispose();
+    }
+
+    // Three points determine a circle in 3D exactly, so RANSAC needs only a 3-point sample -- cheaper
+    // per draw than a sphere's 4.
+    [Test]
+    public void Circle3ThroughRansac()
+    {
+        var n0 = math.normalize(new fProxy3((fProxy)0, (fProxy)0.3, (fProxy)1));
+        Fit.OrthoBasis(n0, out fProxy3 u, out fProxy3 v);
+        var c0 = new fProxy3((fProxy)0.5, (fProxy)0, (fProxy)0);
+
+        var clean = TiltedCircle(c0, u, v, 3.0, 30);
+        var pts = new NativeArray<fProxy3>(clean.Length + 20, Allocator.Temp);
+        for (int i = 0; i < clean.Length; i++) pts[i] = clean[i];
+        var rng = new Unity.Mathematics.Random(808u);
+        for (int i = 0; i < 20; i++)
+            pts[clean.Length + i] = new fProxy3((fProxy)rng.NextDouble(-6, 6), (fProxy)rng.NextDouble(-6, 6),
+                                                (fProxy)rng.NextDouble(-6, 6));
+
+        var model = new Fit.fProxyCircle3();
+        Assert.AreEqual(3, model.MinimalSamples, "a 3D circle is determined by three points");
+
+        var info = Fit.ransac(pts, ref model, (fProxy)0.1, 0, 17u);
+        Assert.IsTrue(info, $"circle3 RANSAC failed ({info.ToString()})");
+        Assert.That((double)model.Radius, Is.EqualTo(3.0).Within(0.1), "RANSAC radius");
+        Assert.That(math.abs((double)math.dot(math.normalize(model.Normal), n0)),
+            Is.EqualTo(1.0).Within(0.05), "RANSAC normal");
+
+        clean.Dispose(); pts.Dispose();
+    }
+
+    [Test]
+    public void Ellipse3RecoversTiltedEllipse()
+    {
+        var n0 = math.normalize(new fProxy3((fProxy)0.2, (fProxy)0.5, (fProxy)1));
+        Fit.OrthoBasis(n0, out fProxy3 u, out fProxy3 v);
+        var c0 = new fProxy3((fProxy)(-1), (fProxy)0.5, (fProxy)2);
+        const double a = 4.0, b = 1.5;
+
+        var pts = new NativeArray<fProxy3>(20, Allocator.Temp);
+        for (int i = 0; i < 20; i++)
+        {
+            double t = 2.0 * math.PI_DBL * i / 20;
+            pts[i] = c0 + (fProxy)(a * math.cos(t)) * u + (fProxy)(b * math.sin(t)) * v;
+        }
+
+        var model = new Fit.fProxyEllipse3();
+        Assert.IsTrue(model.Estimate(pts), "ellipse3 estimate failed");
+
+        double big = math.max((double)model.RadiusA, (double)model.RadiusB);
+        double small = math.min((double)model.RadiusA, (double)model.RadiusB);
+        Assert.That(big, Is.EqualTo(a).Within(0.05), "major semi-axis");
+        Assert.That(small, Is.EqualTo(b).Within(0.05), "minor semi-axis");
+        Assert.That((double)math.length(model.Center - c0), Is.EqualTo(0.0).Within(0.05), "centre");
+
+        // Points generated ON the ellipse should measure near zero through the Newton distance.
+        for (int i = 0; i < pts.Length; i++)
+            Assert.Less((double)model.Distance(pts[i]), 0.05, $"on-ellipse point {i} should measure ~0");
+
+        pts.Dispose();
+    }
+
+    // The Newton in-plane distance against a case with a known answer: on the major axis the closest
+    // point is the vertex, so the distance is exactly the overshoot.
+    [Test]
+    public void Ellipse3DistanceMatchesKnownGeometry()
+    {
+        var model = new Fit.fProxyEllipse3
+        {
+            Center = default,
+            Normal = new fProxy3((fProxy)0, (fProxy)0, (fProxy)1),
+            AxisA = new fProxy3((fProxy)1, (fProxy)0, (fProxy)0),
+            RadiusA = (fProxy)4,
+            RadiusB = (fProxy)2,
+        };
+
+        Assert.That((double)model.Distance(new fProxy3((fProxy)6, (fProxy)0, (fProxy)0)),
+            Is.EqualTo(2.0).Within(1e-3), "along the major axis: 6 - 4");
+        Assert.That((double)model.Distance(new fProxy3((fProxy)0, (fProxy)5, (fProxy)0)),
+            Is.EqualTo(3.0).Within(1e-3), "along the minor axis: 5 - 2");
+        Assert.That((double)model.Distance(new fProxy3((fProxy)4, (fProxy)0, (fProxy)3)),
+            Is.EqualTo(3.0).Within(1e-3), "straight off the plane from a vertex");
+    }
+
+    // Flat shapes must reach the metric axis, not just RANSAC: Circle3 and Ellipse3 both implement
+    // Weighted3 (IRLS) and Parametric3 (NLS), so any loss applies to them like any other shape.
+    [Test]
+    public void FlatShapesTakeAnyMetric()
+    {
+        var n0 = math.normalize(new fProxy3((fProxy)0.3, (fProxy)0.2, (fProxy)1));
+        Fit.OrthoBasis(n0, out fProxy3 u, out fProxy3 v);
+        var c0 = new fProxy3((fProxy)1, (fProxy)0, (fProxy)0.5);
+
+        var clean = TiltedCircle(c0, u, v, 2.0, 24);
+        var pts = new NativeArray<fProxy3>(clean.Length + 1, Allocator.Temp);
+        for (int i = 0; i < clean.Length; i++) pts[i] = clean[i];
+        pts[clean.Length] = c0 + (fProxy)3.2 * u;          // moderate, off the circle
+
+        // IRLS with L2 vs a robust loss -- robust must recover the radius better.
+        var mL2 = new Fit.fProxyCircle3();
+        var l2 = new fProxyL2Loss();
+        Assert.IsTrue(Fit.irls(pts, ref mL2, in l2), "circle3 IRLS/L2 failed");
+
+        var mH = new Fit.fProxyCircle3();
+        var huber = new fProxyHuberLoss((fProxy)0.2);
+        Assert.IsTrue(Fit.irls(pts, ref mH, in huber), "circle3 IRLS/Huber failed");
+
+        Assert.Less(math.abs((double)mH.Radius - 2.0), math.abs((double)mL2.Radius - 2.0),
+            "a robust metric should recover the flat circle better under an outlier");
+
+        // Circle3 also satisfies Parametric3, so NLS accepts it -- but IRLS is the right solver here
+        // and is what this asserts. Two reasons NLS is a poor fit for this shape specifically:
+        //   * it has an EXACT closed-form weighted fit, so iterating buys nothing;
+        //   * its packing carries gauge freedom (7 parameters for 6 dof, the normal's length being
+        //     free), which leaves the finite-difference Jacobian rank-deficient by one. In double LM
+        //     damps through that fine; in float the damping swamps the real directions and the step
+        //     collapses, leaving the seed untouched.
+        // Prefer NLS for the shapes with no weighted form -- cylinder, cone, torus, capsule.
+        var mN = new Fit.fProxyCircle3 { Center = c0, Normal = n0, Radius = (fProxy)1.8 };
+        Fit.nls(pts, ref mN, in huber);
+        Assert.IsFalse(double.IsNaN((double)mN.Radius), "NLS must leave a finite radius even when it cannot improve");
+        Assert.Greater((double)mN.Radius, 0.0, "NLS must not flip the radius negative");
+
+        // Ellipse3 through IRLS: previously it implemented only Estimable3, so no metric reached it.
+        var el = new Fit.fProxyEllipse3();
+        Assert.IsTrue(Fit.irls(clean, ref el, in l2), "ellipse3 IRLS failed");
+        Assert.That(math.max((double)el.RadiusA, (double)el.RadiusB), Is.EqualTo(2.0).Within(0.05),
+            "a circle is an ellipse with equal semi-axes");
+
+        clean.Dispose(); pts.Dispose();
+    }
+
     // ---------------------------------------------------------------- 2D family
 
     [Test]

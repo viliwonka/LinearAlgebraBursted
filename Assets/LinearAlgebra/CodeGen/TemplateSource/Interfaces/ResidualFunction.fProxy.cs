@@ -62,6 +62,12 @@ namespace BULA
     /// <see cref="LP.lad(in fProxyMxN, in fProxyN, ref fProxyN, out double, int)"/>, which is a
     /// finite algorithm reaching the true optimum; this loss exists so the same metric can be
     /// applied to fits that have no exact combinatorial solver (orthogonal / geometric fits).
+    ///
+    /// Best suited to IRLS, which reads only <see cref="RhoPrime"/>. A SECOND-ORDER solver
+    /// (<see cref="Optimize.nlsSolve{TF, TLoss}"/>) also reads <see cref="RhoPrime2"/>, which here is
+    /// -0.25/s^1.5 -- enormous at a small <see cref="Floor"/>, enough to make the scaled system
+    /// indefinite and stall the step. For Gauss-Newton prefer <see cref="fProxyHuberLoss"/> or
+    /// <see cref="fProxyCauchyLoss"/>, or raise the floor to the data's real noise scale.
     /// </summary>
     public readonly struct fProxyL1Loss : IfProxyRobustLoss
     {
