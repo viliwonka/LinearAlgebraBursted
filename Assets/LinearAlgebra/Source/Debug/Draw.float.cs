@@ -44,7 +44,7 @@ namespace BULA
         public static void consensus<TModel>(NativeArray<float3> pts, in TModel model, float threshold,
                                              Color inlier = default, Color outlier = default,
                                              float size = default, float duration = 0f)
-            where TModel : struct, IfloatRansacModel
+            where TModel : struct, IfloatShape3
         {
             Color ci = inlier.a > 0f ? inlier : Color.green;
             Color co = outlier.a > 0f ? outlier : Color.red;

@@ -173,6 +173,45 @@ namespace BULA
         // floatL2Loss has RhoPrime == 1, so the weights never move and this exits after one pass --
         // identical to plain PCA, which is why the non-generic overloads forward there directly.
         // ============================================================================================
+        // ONE weighted pass: weighted centroid, weighted covariance, eigendecomposition. Factored out
+        // of the IRLS loop so the generic Fit.irls driver and the shape structs can call a single
+        // weighted fit without inheriting a loop -- the loop belongs to the solver, not the shape.
+        //
+        // Returns false when the total weight is zero, which a redescending loss can produce: solving
+        // from an all-zero weighting yields NaN, and reporting that as success would be a false
+        // certificate. C is DESTROYED (symmetricInPlace), so callers rebuild it every pass.
+        internal static bool SubspaceFitWeighted(NativeArray<float> X, int n, int d, in floatN w,
+                                                 ref floatN mean, ref floatMxN C,
+                                                 ref floatN eig, ref floatMxN V)
+        {
+            float sw = (float)0;
+            for (int j = 0; j < d; j++) mean[j] = (float)0;
+            for (int i = 0; i < n; i++)
+            {
+                float wi = w[i];
+                sw += wi;
+                for (int j = 0; j < d; j++) mean[j] += wi * X[i * d + j];
+            }
+            if (!(sw > (float)0)) return false;
+            for (int j = 0; j < d; j++) mean[j] /= sw;
+
+            for (int a = 0; a < d; a++)
+                for (int b = 0; b < d; b++) C[a, b] = (float)0;
+            for (int i = 0; i < n; i++)
+            {
+                float wi = w[i];
+                for (int a = 0; a < d; a++)
+                {
+                    float qa = X[i * d + a] - mean[a];
+                    for (int b = 0; b < d; b++) C[a, b] += wi * qa * (X[i * d + b] - mean[b]);
+                }
+            }
+            for (int a = 0; a < d; a++)
+                for (int b = 0; b < d; b++) C[a, b] /= sw;
+
+            return Eigen.symmetricInPlace(ref C, ref eig, ref V);
+        }
+
         static bool SubspaceIrls<TLoss>(NativeArray<float> X, int n, int d, int k,
                                         in TLoss loss, int maxIter,
                                         ref floatN mean, ref floatMxN V)
@@ -188,32 +227,7 @@ namespace BULA
             bool ok = false;
             for (int it = 0; it < maxIter; it++)
             {
-                float sw = (float)0;
-                for (int j = 0; j < d; j++) mean[j] = (float)0;
-                for (int i = 0; i < n; i++)
-                {
-                    float wi = w[i];
-                    sw += wi;
-                    for (int j = 0; j < d; j++) mean[j] += wi * X[i * d + j];
-                }
-                if (!(sw > (float)0)) { ok = false; break; }   // every point rejected (redescending loss)
-                for (int j = 0; j < d; j++) mean[j] /= sw;
-
-                for (int a = 0; a < d; a++)
-                    for (int b = 0; b < d; b++) C[a, b] = (float)0;
-                for (int i = 0; i < n; i++)
-                {
-                    float wi = w[i];
-                    for (int a = 0; a < d; a++)
-                    {
-                        float qa = X[i * d + a] - mean[a];
-                        for (int b = 0; b < d; b++) C[a, b] += wi * qa * (X[i * d + b] - mean[b]);
-                    }
-                }
-                for (int a = 0; a < d; a++)
-                    for (int b = 0; b < d; b++) C[a, b] /= sw;
-
-                ok = Eigen.symmetricInPlace(ref C, ref eig, ref V);   // DESTROYS C; rebuilt above each pass
+                ok = SubspaceFitWeighted(X, n, d, in w, ref mean, ref C, ref eig, ref V);
                 if (!ok) break;
 
                 float maxDelta = (float)0;

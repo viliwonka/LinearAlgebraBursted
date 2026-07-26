@@ -45,7 +45,7 @@ namespace BULA
         public static void consensus<TModel>(NativeArray<fProxy3> pts, in TModel model, fProxy threshold,
                                              Color inlier = default, Color outlier = default,
                                              fProxy size = default, float duration = 0f)
-            where TModel : struct, IfProxyRansacModel
+            where TModel : struct, IfProxyShape3
         {
             Color ci = inlier.a > 0f ? inlier : Color.green;
             Color co = outlier.a > 0f ? outlier : Color.red;

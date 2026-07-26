@@ -11,28 +11,6 @@ using Unity.Mathematics;
 
 namespace BULA
 {
-    /// <summary>
-    /// A shape RANSAC can estimate from a minimal point sample and measure points against. Implement
-    /// on a small struct whose fields ARE the model parameters -- <see cref="Fit.ransac"/> writes the
-    /// winning estimate back through them.
-    /// </summary>
-    public interface IfloatRansacModel
-    {
-        /// <summary>Points needed to determine the shape (3 for a plane, 4 for a sphere, 2 for a line).</summary>
-        int MinimalSamples { get; }
-
-        /// <summary>
-        /// Estimates the model from <paramref name="sample"/> and stores it in this instance. Called
-        /// with exactly <see cref="MinimalSamples"/> points during search and with the whole consensus
-        /// set for the final refit, so it must accept any count at or above the minimum. False means
-        /// this sample is degenerate.
-        /// </summary>
-        bool Estimate(NativeArray<float3> sample);
-
-        /// <summary>Distance from a point to the current model. Must be non-negative.</summary>
-        float Distance(in float3 point);
-    }
-
     public static partial class Fit
     {
         // ============================================================================================
@@ -75,7 +53,7 @@ namespace BULA
         public static RansacInfo ransac<TModel>(NativeArray<float3> points, ref TModel model,
                                                 float threshold, int maxIter = 0, uint seed = 0,
                                                 double confidence = 0.99)
-            where TModel : struct, IfloatRansacModel
+            where TModel : struct, IfloatEstimable3
         {
             int n = points.Length;
             int m = model.MinimalSamples;
@@ -159,64 +137,5 @@ namespace BULA
         // -- declared here they would be emitted identically into both generated dtype files and
         // collide on the partial-class merge (CS0111).
 
-        // ---- ready-made models ---------------------------------------------------------------------
-
-        /// <summary>Plane through a 3D point cloud, for <see cref="ransac"/>. 3 points determine it.</summary>
-        public struct floatPlaneModel : IfloatRansacModel
-        {
-            public float3 Point;
-            public float3 Normal;
-
-            public int MinimalSamples => 3;
-
-            public bool Estimate(NativeArray<float3> sample)
-            {
-                bool ok = plane(sample, out float3 c, out float3 nrm);
-                if (ok) { Point = c; Normal = nrm; }
-                return ok;
-            }
-
-            public float Distance(in float3 p) => math.abs(math.dot(p - Point, Normal));
-        }
-
-        /// <summary>Sphere through a 3D point cloud, for <see cref="ransac"/>. 4 points determine it.</summary>
-        public struct floatSphereModel : IfloatRansacModel
-        {
-            public float3 Center;
-            public float Radius;
-
-            public int MinimalSamples => 4;
-
-            public bool Estimate(NativeArray<float3> sample)
-            {
-                bool ok = sphere(sample, out float3 c, out float r);
-                if (ok) { Center = c; Radius = r; }
-                return ok;
-            }
-
-            public float Distance(in float3 p) => math.abs(math.length(p - Center) - Radius);
-        }
-
-        /// <summary>Infinite 3D line, for <see cref="ransac"/>. 2 points determine it.</summary>
-        public struct floatLine3Model : IfloatRansacModel
-        {
-            public float3 Point;
-            public float3 Direction;
-
-            public int MinimalSamples => 2;
-
-            public bool Estimate(NativeArray<float3> sample)
-            {
-                bool ok = line(sample, out float3 c, out float3 d);
-                if (ok) { Point = c; Direction = d; }
-                return ok;
-            }
-
-            public float Distance(in float3 p)
-            {
-                float3 v = p - Point;
-                return math.length(v - math.dot(v, Direction) * Direction);
-            }
-        }
     }
 }

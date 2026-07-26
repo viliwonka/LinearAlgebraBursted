@@ -756,7 +756,7 @@ public class fProxyFitTests
         Assert.IsTrue(Fit.plane(pts, in huber, out _, out fProxy3 nH));
         double errHuber = AngleError(nH, want);
 
-        var model = new Fit.fProxyPlaneModel();
+        var model = new Fit.fProxyPlane();
         var info = Fit.ransac(pts, ref model, (fProxy)0.15, 0, 12345u);
         Assert.IsTrue(info, $"RANSAC found no consensus ({info.ToString()})");
         double errRansac = AngleError(model.Normal, want);
@@ -777,9 +777,9 @@ public class fProxyFitTests
     {
         var pts = ContaminatedPlane(30, 30, 55u);
 
-        var m1 = new Fit.fProxyPlaneModel();
+        var m1 = new Fit.fProxyPlane();
         var i1 = Fit.ransac(pts, ref m1, (fProxy)0.15, 0, 4242u);
-        var m2 = new Fit.fProxyPlaneModel();
+        var m2 = new Fit.fProxyPlane();
         var i2 = Fit.ransac(pts, ref m2, (fProxy)0.15, 0, 4242u);
 
         Assert.IsTrue(i1 && i2, "both runs should find a consensus");
@@ -798,7 +798,7 @@ public class fProxyFitTests
     {
         var pts = ContaminatedPlane(60, 0, 7u);
 
-        var model = new Fit.fProxyPlaneModel();
+        var model = new Fit.fProxyPlane();
         var info = Fit.ransac(pts, ref model, (fProxy)0.05, 0, 99u);
 
         Assert.IsTrue(info, "clean data should find a consensus");
@@ -827,7 +827,7 @@ public class fProxyFitTests
             sp[i] = new fProxy3((fProxy)rng.NextDouble(-8.0, 8.0), (fProxy)rng.NextDouble(-8.0, 8.0),
                                 (fProxy)rng.NextDouble(-8.0, 8.0));
 
-        var sm = new Fit.fProxySphereModel();
+        var sm = new Fit.fProxySphere3();
         var si = Fit.ransac(sp, ref sm, (fProxy)0.1, 0, 808u);
         Assert.IsTrue(si, $"sphere RANSAC failed ({si.ToString()})");
         Assert.That((double)sm.Radius, Is.EqualTo(3.0).Within(0.1), "sphere radius");
@@ -844,7 +844,7 @@ public class fProxyFitTests
             ln[i] = new fProxy3((fProxy)rng.NextDouble(-8.0, 8.0), (fProxy)rng.NextDouble(-8.0, 8.0),
                                 (fProxy)rng.NextDouble(-8.0, 8.0));
 
-        var lm = new Fit.fProxyLine3Model();
+        var lm = new Fit.fProxyLine3();
         var li = Fit.ransac(ln, ref lm, (fProxy)0.1, 0, 606u);
         Assert.IsTrue(li, $"line RANSAC failed ({li.ToString()})");
         var wantDir = math.normalize(new fProxy3((fProxy)1, (fProxy)2, (fProxy)(-1)));
@@ -857,7 +857,7 @@ public class fProxyFitTests
     public void RansacGuardsThrow()
     {
         var pts = new NativeArray<fProxy3>(2, Allocator.Temp);
-        var model = new Fit.fProxyPlaneModel();
+        var model = new Fit.fProxyPlane();
 
         // Fewer points than the model's minimal sample.
         Assert.Throws<ArgumentException>(() => { var m = model; Fit.ransac(pts, ref m, (fProxy)0.1); });
@@ -1530,7 +1530,7 @@ public class fProxyFitTests
     public void RansacExplicitBudgetRunsEveryDraw()
     {
         var pts = ContaminatedPlane(40, 20, 123u);
-        var model = new Fit.fProxyPlaneModel();
+        var model = new Fit.fProxyPlane();
 
         var info = Fit.ransac(pts, ref model, (fProxy)0.15, 25, 77u);
 

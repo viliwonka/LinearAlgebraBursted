@@ -756,7 +756,7 @@ public class floatFitTests
         Assert.IsTrue(Fit.plane(pts, in huber, out _, out float3 nH));
         double errHuber = AngleError(nH, want);
 
-        var model = new Fit.floatPlaneModel();
+        var model = new Fit.floatPlane();
         var info = Fit.ransac(pts, ref model, (float)0.15, 0, 12345u);
         Assert.IsTrue(info, $"RANSAC found no consensus ({info.ToString()})");
         double errRansac = AngleError(model.Normal, want);
@@ -777,9 +777,9 @@ public class floatFitTests
     {
         var pts = ContaminatedPlane(30, 30, 55u);
 
-        var m1 = new Fit.floatPlaneModel();
+        var m1 = new Fit.floatPlane();
         var i1 = Fit.ransac(pts, ref m1, (float)0.15, 0, 4242u);
-        var m2 = new Fit.floatPlaneModel();
+        var m2 = new Fit.floatPlane();
         var i2 = Fit.ransac(pts, ref m2, (float)0.15, 0, 4242u);
 
         Assert.IsTrue(i1 && i2, "both runs should find a consensus");
@@ -798,7 +798,7 @@ public class floatFitTests
     {
         var pts = ContaminatedPlane(60, 0, 7u);
 
-        var model = new Fit.floatPlaneModel();
+        var model = new Fit.floatPlane();
         var info = Fit.ransac(pts, ref model, (float)0.05, 0, 99u);
 
         Assert.IsTrue(info, "clean data should find a consensus");
@@ -827,7 +827,7 @@ public class floatFitTests
             sp[i] = new float3((float)rng.NextDouble(-8.0, 8.0), (float)rng.NextDouble(-8.0, 8.0),
                                 (float)rng.NextDouble(-8.0, 8.0));
 
-        var sm = new Fit.floatSphereModel();
+        var sm = new Fit.floatSphere3();
         var si = Fit.ransac(sp, ref sm, (float)0.1, 0, 808u);
         Assert.IsTrue(si, $"sphere RANSAC failed ({si.ToString()})");
         Assert.That((double)sm.Radius, Is.EqualTo(3.0).Within(0.1), "sphere radius");
@@ -844,7 +844,7 @@ public class floatFitTests
             ln[i] = new float3((float)rng.NextDouble(-8.0, 8.0), (float)rng.NextDouble(-8.0, 8.0),
                                 (float)rng.NextDouble(-8.0, 8.0));
 
-        var lm = new Fit.floatLine3Model();
+        var lm = new Fit.floatLine3();
         var li = Fit.ransac(ln, ref lm, (float)0.1, 0, 606u);
         Assert.IsTrue(li, $"line RANSAC failed ({li.ToString()})");
         var wantDir = math.normalize(new float3((float)1, (float)2, (float)(-1)));
@@ -857,7 +857,7 @@ public class floatFitTests
     public void RansacGuardsThrow()
     {
         var pts = new NativeArray<float3>(2, Allocator.Temp);
-        var model = new Fit.floatPlaneModel();
+        var model = new Fit.floatPlane();
 
         // Fewer points than the model's minimal sample.
         Assert.Throws<ArgumentException>(() => { var m = model; Fit.ransac(pts, ref m, (float)0.1); });
@@ -1530,7 +1530,7 @@ public class floatFitTests
     public void RansacExplicitBudgetRunsEveryDraw()
     {
         var pts = ContaminatedPlane(40, 20, 123u);
-        var model = new Fit.floatPlaneModel();
+        var model = new Fit.floatPlane();
 
         var info = Fit.ransac(pts, ref model, (float)0.15, 25, 77u);
 

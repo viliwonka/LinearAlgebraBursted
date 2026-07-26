@@ -80,7 +80,7 @@ public class doubleFitBurstTests
 
         public void Execute()
         {
-            var model = new Fit.doublePlaneModel();
+            var model = new Fit.doublePlane();
             var info = Fit.ransac(Points, ref model, (double)0.1, 40, 7u);
             Out[0] = model.Normal.z;
             Inliers[0] = info.inliers;

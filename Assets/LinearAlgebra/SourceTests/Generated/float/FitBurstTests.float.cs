@@ -80,7 +80,7 @@ public class floatFitBurstTests
 
         public void Execute()
         {
-            var model = new Fit.floatPlaneModel();
+            var model = new Fit.floatPlane();
             var info = Fit.ransac(Points, ref model, (float)0.1, 40, 7u);
             Out[0] = model.Normal.z;
             Inliers[0] = info.inliers;

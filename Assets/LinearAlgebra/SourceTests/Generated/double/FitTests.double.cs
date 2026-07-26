@@ -756,7 +756,7 @@ public class doubleFitTests
         Assert.IsTrue(Fit.plane(pts, in huber, out _, out double3 nH));
         double errHuber = AngleError(nH, want);
 
-        var model = new Fit.doublePlaneModel();
+        var model = new Fit.doublePlane();
         var info = Fit.ransac(pts, ref model, (double)0.15, 0, 12345u);
         Assert.IsTrue(info, $"RANSAC found no consensus ({info.ToString()})");
         double errRansac = AngleError(model.Normal, want);
@@ -777,9 +777,9 @@ public class doubleFitTests
     {
         var pts = ContaminatedPlane(30, 30, 55u);
 
-        var m1 = new Fit.doublePlaneModel();
+        var m1 = new Fit.doublePlane();
         var i1 = Fit.ransac(pts, ref m1, (double)0.15, 0, 4242u);
-        var m2 = new Fit.doublePlaneModel();
+        var m2 = new Fit.doublePlane();
         var i2 = Fit.ransac(pts, ref m2, (double)0.15, 0, 4242u);
 
         Assert.IsTrue(i1 && i2, "both runs should find a consensus");
@@ -798,7 +798,7 @@ public class doubleFitTests
     {
         var pts = ContaminatedPlane(60, 0, 7u);
 
-        var model = new Fit.doublePlaneModel();
+        var model = new Fit.doublePlane();
         var info = Fit.ransac(pts, ref model, (double)0.05, 0, 99u);
 
         Assert.IsTrue(info, "clean data should find a consensus");
@@ -827,7 +827,7 @@ public class doubleFitTests
             sp[i] = new double3((double)rng.NextDouble(-8.0, 8.0), (double)rng.NextDouble(-8.0, 8.0),
                                 (double)rng.NextDouble(-8.0, 8.0));
 
-        var sm = new Fit.doubleSphereModel();
+        var sm = new Fit.doubleSphere3();
         var si = Fit.ransac(sp, ref sm, (double)0.1, 0, 808u);
         Assert.IsTrue(si, $"sphere RANSAC failed ({si.ToString()})");
         Assert.That((double)sm.Radius, Is.EqualTo(3.0).Within(0.1), "sphere radius");
@@ -844,7 +844,7 @@ public class doubleFitTests
             ln[i] = new double3((double)rng.NextDouble(-8.0, 8.0), (double)rng.NextDouble(-8.0, 8.0),
                                 (double)rng.NextDouble(-8.0, 8.0));
 
-        var lm = new Fit.doubleLine3Model();
+        var lm = new Fit.doubleLine3();
         var li = Fit.ransac(ln, ref lm, (double)0.1, 0, 606u);
         Assert.IsTrue(li, $"line RANSAC failed ({li.ToString()})");
         var wantDir = math.normalize(new double3((double)1, (double)2, (double)(-1)));
@@ -857,7 +857,7 @@ public class doubleFitTests
     public void RansacGuardsThrow()
     {
         var pts = new NativeArray<double3>(2, Allocator.Temp);
-        var model = new Fit.doublePlaneModel();
+        var model = new Fit.doublePlane();
 
         // Fewer points than the model's minimal sample.
         Assert.Throws<ArgumentException>(() => { var m = model; Fit.ransac(pts, ref m, (double)0.1); });
@@ -1530,7 +1530,7 @@ public class doubleFitTests
     public void RansacExplicitBudgetRunsEveryDraw()
     {
         var pts = ContaminatedPlane(40, 20, 123u);
-        var model = new Fit.doublePlaneModel();
+        var model = new Fit.doublePlane();
 
         var info = Fit.ransac(pts, ref model, (double)0.15, 25, 77u);
 

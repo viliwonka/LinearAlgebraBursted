@@ -106,7 +106,7 @@ public class fProxyDrawTests
     public void ConsensusDrawsAgainstAModel()
     {
         var pts = Cloud(30);
-        var model = new Fit.fProxyPlaneModel
+        var model = new Fit.fProxyPlane
         {
             Point = new fProxy3((fProxy)0, (fProxy)0, (fProxy)0),
             Normal = new fProxy3((fProxy)0, (fProxy)0, (fProxy)1),

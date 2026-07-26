@@ -107,7 +107,7 @@ public class floatDrawTests
     public void ConsensusDrawsAgainstAModel()
     {
         var pts = Cloud(30);
-        var model = new Fit.floatPlaneModel
+        var model = new Fit.floatPlane
         {
             Point = new float3((float)0, (float)0, (float)0),
             Normal = new float3((float)0, (float)0, (float)1),

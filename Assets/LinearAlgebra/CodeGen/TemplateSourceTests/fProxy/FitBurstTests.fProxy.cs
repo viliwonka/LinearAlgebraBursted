@@ -79,7 +79,7 @@ public class fProxyFitBurstTests
 
         public void Execute()
         {
-            var model = new Fit.fProxyPlaneModel();
+            var model = new Fit.fProxyPlane();
             var info = Fit.ransac(Points, ref model, (fProxy)0.1, 40, 7u);
             Out[0] = model.Normal.z;
             Inliers[0] = info.inliers;

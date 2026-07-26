@@ -107,7 +107,7 @@ public class doubleDrawTests
     public void ConsensusDrawsAgainstAModel()
     {
         var pts = Cloud(30);
-        var model = new Fit.doublePlaneModel
+        var model = new Fit.doublePlane
         {
             Point = new double3((double)0, (double)0, (double)0),
             Normal = new double3((double)0, (double)0, (double)1),
