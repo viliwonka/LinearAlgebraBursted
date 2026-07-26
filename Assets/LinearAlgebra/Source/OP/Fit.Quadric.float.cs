@@ -291,8 +291,7 @@ namespace BULA
 
         // Sampson IRLS over the 3D coefficient families, shared by `quadric` and `ellipsoid`: their
         // coefficients and their Sampson distance are the same, only the weighted fit underneath
-        // differs. Keeping ONE loop keeps the collapse guard in one place -- that invariant was
-        // duplicated per shape once before, and the missing copy was a real bug.
+        // differs. One loop, so the collapse guard has exactly one home.
         static bool QuadricIrls<TLoss>(NativeArray<float3> points, in TLoss loss, ref floatN coeffs,
                                        int maxIter, bool ellipsoidOnly)
             where TLoss : struct, IfloatRobustLoss

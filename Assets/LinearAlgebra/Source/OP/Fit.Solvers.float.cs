@@ -20,9 +20,8 @@ namespace BULA
     //   nls     Levenberg-Marquardt on the packed parameters      (IfloatParametric3)
     //
     // The DRIVERS own the invariants the shapes must not have to remember: weight initialisation, the
-    // all-weights-zero collapse guard, convergence, and the iteration budget. That division is the
-    // point of the refactor -- the same collapse bug appeared twice while those loops were duplicated
-    // per shape, because the invariant lived in a comment rather than in one place.
+    // all-weights-zero collapse guard, convergence, and the iteration budget. A shape supplies only
+    // geometry -- if it finds itself carrying one of those, it is on the wrong side of the split.
     //
     // Job-safe: scratch is Allocator.Temp, disposed before returning.
     // ================================================================================================
@@ -125,6 +124,12 @@ namespace BULA
             where TLoss : struct, IfloatRobustLoss
         {
             int n = points.Length;
+
+            // Guarded before allocating: nlsSolve throws on m <= 0, which would strand p. Below
+            // ParamCount the system is underdetermined and LM would run to no useful answer, so
+            // that is reported as a plain failure rather than a silent one.
+            if (n < model.ParamCount) return false;
+
             var p = new floatN(model.ParamCount, Allocator.Temp);
             model.Pack(ref p);
 

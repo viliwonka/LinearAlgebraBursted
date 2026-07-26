@@ -155,6 +155,11 @@ namespace BULA
 
             public bool Refit(NativeArray<fProxy3> points, in fProxyN w)
             {
+                // Guarded before allocating: the solve underneath THROWS below its minimum, and a
+                // throw past this point would strand the Temp allocation. Refit is public, so a
+                // direct caller can reach it without going through a driver that already checks.
+                if (points.Length < MinimalSamples) return false;
+
                 var c = new fProxyN(3, Allocator.Temp);
                 bool ok = SphereAlgebraic(points.Reinterpret<fProxy3, fProxy>(), points.Length, 3,
                                           in w, ref c, out fProxy r);

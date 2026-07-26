@@ -75,6 +75,7 @@ namespace BULA
             // with the caller's weights carried into both.
             public bool Refit(NativeArray<float3> points, in floatN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see floatSphere3.Refit
                 if (!SubspaceRefit(points, in w, 3, out float3 c0, out float3 n)) return false;
                 OrthoBasis(n, out float3 u, out float3 v);
 
@@ -169,6 +170,7 @@ namespace BULA
 
             public bool Refit(NativeArray<float3> points, in floatN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see floatSphere3.Refit
                 if (!SubspaceRefit(points, in w, 3, out float3 c0, out float3 n)) return false;
                 OrthoBasis(n, out float3 u, out float3 v);
 

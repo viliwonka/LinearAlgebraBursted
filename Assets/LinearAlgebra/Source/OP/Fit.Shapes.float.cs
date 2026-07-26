@@ -155,6 +155,11 @@ namespace BULA
 
             public bool Refit(NativeArray<float3> points, in floatN w)
             {
+                // Guarded before allocating: the solve underneath THROWS below its minimum, and a
+                // throw past this point would strand the Temp allocation. Refit is public, so a
+                // direct caller can reach it without going through a driver that already checks.
+                if (points.Length < MinimalSamples) return false;
+
                 var c = new floatN(3, Allocator.Temp);
                 bool ok = SphereAlgebraic(points.Reinterpret<float3, float>(), points.Length, 3,
                                           in w, ref c, out float r);

@@ -1,6 +1,30 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## Fit / Blas.Triangular — review cleanup, 2026-07-26
+- 2026-07-26 | `Blas.triUpper` now reports `Singular` instead of always reporting Success. Fixed at the
+  innermost kernel rather than per-caller, so LU/CHO/QR/LQ all gain it. Rejects a zero, NaN or
+  +/-Inf diagonal and checks the result is finite. The Inf case is NOT redundant with the finiteness
+  check: `abs(Inf) > 0` passes the magnitude test and then drives `x[r] = finite/Inf = 0`, which is
+  finite and would be certified. Detection is deliberately narrow -- only what definitively produces
+  garbage -- so no currently-working caller changes behaviour; ill-conditioned-but-usable still
+  solves and still reports Success. The whole suite passing unchanged is the evidence.
+- 2026-07-26 | `Fit.conic` gained the same Hartley normalization the 3D ellipsoid route has, for the
+  identical reason: its design entries are FOURTH powers, so a unit circle centred at (500, 500)
+  faces a scatter conditioned like offset^4. `Fit.ellipse` on an off-origin cloud in float was
+  returning garbage or false long before any of today's work.
+- 2026-07-26 | Comment-policy violations trimmed: three code comments carried bug-postmortem
+  narration (the collapse-guard-duplication history) that belongs here per CLAUDE.md. One of the
+  three disappeared with SphereIrls; the other two are now contract language.
+- 2026-07-26 | Uniformity ORACLES added for the ellipsoid and capsule samplers. Neither
+  surface-membership nor fit-back can catch a biased sampler -- both pass for anything that lands on
+  the surface -- so a sign slip in the ellipsoid's stretch factor or the capsule's area split would
+  have shipped green. Ellipsoid: for the oblate (1, 1, 0.5) spheroid the stretch is
+  `sqrt(0.25 + 0.75 nz²)`, giving `E[|nz|] = (7/9)/1.38017 = 0.5635` against the 0.5 an unrejected
+  sampler yields, ~30 sigma at n = 20000. Capsule: tube share is `L/(L + 2r)`.
+- 2026-07-26 | `Subspace2Refit`'s `dominant` parameter was dead -- 2D has no plane-equivalent, so
+  nothing ever asked for the minor axis. Dropped rather than left as unexplained dead code.
+
 ## Fit — correctness pass on the review findings, 2026-07-26
 - 2026-07-26 | **Sampson IRLS was not Sampson-weighted.** Minimizing `sum rho(F²/g²)` through a
   weighted ALGEBRAIC fit needs weight `rho'(d²)/g²`; the `1/g²` was missing, so the refit still

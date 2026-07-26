@@ -85,6 +85,8 @@ namespace BULA
 
             bool FitFrom(NativeArray<float3> points, in floatN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see floatSphere3.Refit
+
                 var c = new floatN(10, Allocator.Temp);
                 float3 ctr = default, rad = default, a = default, b = default;
 

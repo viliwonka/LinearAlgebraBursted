@@ -85,6 +85,8 @@ namespace BULA
 
             bool FitFrom(NativeArray<double3> points, in doubleN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see doubleSphere3.Refit
+
                 var c = new doubleN(10, Allocator.Temp);
                 double3 ctr = default, rad = default, a = default, b = default;
 

@@ -67,7 +67,7 @@ namespace BULA
             }
 
             public bool Refit(NativeArray<double2> points, in doubleN w)
-                => Subspace2Refit(points, in w, dominant: true, out Point, out Direction);
+                => Subspace2Refit(points, in w, out Point, out Direction);
         }
 
         /// <summary>Circle of <see cref="Radius"/> about <see cref="Center"/>.</summary>
@@ -95,6 +95,8 @@ namespace BULA
 
             public bool Refit(NativeArray<double2> points, in doubleN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see doubleSphere3.Refit
+
                 var c = new doubleN(2, Allocator.Temp);
                 bool ok = SphereAlgebraic(points.Reinterpret<double2, double>(), points.Length, 2,
                                           in w, ref c, out double r);
@@ -145,6 +147,8 @@ namespace BULA
 
             public bool Refit(NativeArray<double2> points, in doubleN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see doubleSphere3.Refit
+
                 var coeffs = new doubleN(6, Allocator.Temp);
                 double2 c = default, r = default;
                 double a = default;
@@ -158,9 +162,10 @@ namespace BULA
             }
         }
 
-        // Weighted centroid + covariance eigendecomposition in 2D. `dominant` picks the largest-variance
-        // axis (a line's direction); the other column is its normal.
-        static bool Subspace2Refit(NativeArray<double2> points, in doubleN w, bool dominant,
+        // Weighted centroid + covariance eigendecomposition in 2D, reporting the largest-variance
+        // axis. Unlike its 3D sibling this takes no axis selector: 2D has no plane-equivalent, so a
+        // line's direction is the only thing anything here asks for.
+        static bool Subspace2Refit(NativeArray<double2> points, in doubleN w,
                                    out double2 origin, out double2 axis)
         {
             var flat = points.Reinterpret<double2, double>();
@@ -172,8 +177,7 @@ namespace BULA
             bool ok = SubspaceFitWeighted(flat, points.Length, 2, in w, ref mean, ref C, ref eig, ref V);
 
             origin = new double2(mean[0], mean[1]);
-            int col = dominant ? 0 : 1;
-            axis = ok ? new double2(V[0, col], V[1, col]) : default;
+            axis = ok ? new double2(V[0, 0], V[1, 0]) : default;
 
             mean.Dispose(); C.Dispose(); eig.Dispose(); V.Dispose();
             return ok;

@@ -65,7 +65,7 @@ namespace BULA
             }
 
             public bool Refit(NativeArray<fProxy2> points, in fProxyN w)
-                => Subspace2Refit(points, in w, dominant: true, out Point, out Direction);
+                => Subspace2Refit(points, in w, out Point, out Direction);
         }
 
         /// <summary>Circle of <see cref="Radius"/> about <see cref="Center"/>.</summary>
@@ -93,6 +93,8 @@ namespace BULA
 
             public bool Refit(NativeArray<fProxy2> points, in fProxyN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see fProxySphere3.Refit
+
                 var c = new fProxyN(2, Allocator.Temp);
                 bool ok = SphereAlgebraic(points.Reinterpret<fProxy2, fProxy>(), points.Length, 2,
                                           in w, ref c, out fProxy r);
@@ -143,6 +145,8 @@ namespace BULA
 
             public bool Refit(NativeArray<fProxy2> points, in fProxyN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see fProxySphere3.Refit
+
                 var coeffs = new fProxyN(6, Allocator.Temp);
                 fProxy2 c = default, r = default;
                 fProxy a = default;
@@ -156,9 +160,10 @@ namespace BULA
             }
         }
 
-        // Weighted centroid + covariance eigendecomposition in 2D. `dominant` picks the largest-variance
-        // axis (a line's direction); the other column is its normal.
-        static bool Subspace2Refit(NativeArray<fProxy2> points, in fProxyN w, bool dominant,
+        // Weighted centroid + covariance eigendecomposition in 2D, reporting the largest-variance
+        // axis. Unlike its 3D sibling this takes no axis selector: 2D has no plane-equivalent, so a
+        // line's direction is the only thing anything here asks for.
+        static bool Subspace2Refit(NativeArray<fProxy2> points, in fProxyN w,
                                    out fProxy2 origin, out fProxy2 axis)
         {
             var flat = points.Reinterpret<fProxy2, fProxy>();
@@ -170,8 +175,7 @@ namespace BULA
             bool ok = SubspaceFitWeighted(flat, points.Length, 2, in w, ref mean, ref C, ref eig, ref V);
 
             origin = new fProxy2(mean[0], mean[1]);
-            int col = dominant ? 0 : 1;
-            axis = ok ? new fProxy2(V[0, col], V[1, col]) : default;
+            axis = ok ? new fProxy2(V[0, 0], V[1, 0]) : default;
 
             mean.Dispose(); C.Dispose(); eig.Dispose(); V.Dispose();
             return ok;

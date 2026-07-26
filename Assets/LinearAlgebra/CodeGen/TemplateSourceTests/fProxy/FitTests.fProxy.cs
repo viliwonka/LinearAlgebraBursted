@@ -2028,6 +2028,73 @@ public class fProxyFitTests
         pts.Dispose();
     }
 
+    // The ellipsoid carries the hardest Jacobian in the set, and neither surface-membership nor
+    // fit-back can catch a mistake in it -- a biased sampler still lands ON the surface and still
+    // fits back exactly. This measures the bias directly.
+    //
+    // Scaling a uniform sphere direction n by the radii stretches area by
+    // sqrt((bc·nx)² + (ca·ny)² + (ab·nz)²), which for the oblate (1, 1, 0.5) spheroid is
+    // sqrt(0.25 + 0.75·nz²) -- heaviest at the poles. So E[|nz|] over the correct distribution is
+    // (7/9) / 1.38017 = 0.5635, where an unrejected sampler would leave nz uniform and give exactly
+    // 0.5. Getting the stretch factor wrong (dropping it, or inverting it) misses by ~30 sigma.
+    [Test]
+    public void EllipsoidSamplingIsUniformByAreaNotByDirection()
+    {
+        var e = new Fit.fProxyEllipsoid
+        {
+            Center = default,
+            AxisA = new fProxy3((fProxy)1, (fProxy)0, (fProxy)0),
+            AxisB = new fProxy3((fProxy)0, (fProxy)1, (fProxy)0),
+            Radii = new fProxy3((fProxy)1, (fProxy)1, (fProxy)0.5),
+        };
+
+        const int n = 20000;
+        var rng = new Random(2468u);
+        var pts = new NativeArray<fProxy3>(n, Allocator.Temp);
+        Fit.sample(in e, ref rng, pts);
+
+        double acc = 0;
+        for (int i = 0; i < n; i++) acc += math.abs((double)pts[i].z) / 0.5;   // |nz|
+
+        Assert.That(acc / n, Is.EqualTo(0.5635).Within(0.02),
+            "area weighting must crowd the poles; an unrejected sampler gives 0.5");
+
+        pts.Dispose();
+    }
+
+    // The capsule splits between tube and caps by area, so the split itself needs an oracle: the tube
+    // takes 2·pi·r·L of the surface against the caps' 4·pi·r², i.e. L / (L + 2r). Membership tests
+    // cannot see a wrong ratio -- both pieces are on the capsule either way.
+    [Test]
+    public void CapsuleSamplingSplitsTubeAndCapsByArea()
+    {
+        const double len = 4.0, rad = 1.0;
+        var c = new Fit.fProxyCapsule
+        {
+            A = default,
+            B = new fProxy3((fProxy)0, (fProxy)0, (fProxy)len),
+            Radius = (fProxy)rad,
+        };
+
+        const int n = 20000;
+        var rng = new Random(1357u);
+        var pts = new NativeArray<fProxy3>(n, Allocator.Temp);
+        Fit.sample(in c, ref rng, pts);
+
+        int tube = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double z = (double)pts[i].z;
+            if (z > 0.0 && z < len) tube++;          // outside [0, L] is necessarily a cap
+        }
+
+        double want = len / (len + 2.0 * rad);       // 2/3
+        Assert.That(tube / (double)n, Is.EqualTo(want).Within(0.02),
+            "tube and caps must be chosen by their areas");
+
+        pts.Dispose();
+    }
+
     // What having both directions buys: generate from a known shape, fit it back, compare -- with no
     // hand-rolled parameterization in the test at all.
     [Test]

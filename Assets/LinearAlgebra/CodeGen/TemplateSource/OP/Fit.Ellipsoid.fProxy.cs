@@ -83,6 +83,8 @@ namespace BULA
 
             bool FitFrom(NativeArray<fProxy3> points, in fProxyN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see fProxySphere3.Refit
+
                 var c = new fProxyN(10, Allocator.Temp);
                 fProxy3 ctr = default, rad = default, a = default, b = default;
 

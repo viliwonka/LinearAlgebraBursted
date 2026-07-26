@@ -74,6 +74,7 @@ namespace BULA
             // with the caller's weights carried into both.
             public bool Refit(NativeArray<fProxy3> points, in fProxyN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see fProxySphere3.Refit
                 if (!SubspaceRefit(points, in w, 3, out fProxy3 c0, out fProxy3 n)) return false;
                 OrthoBasis(n, out fProxy3 u, out fProxy3 v);
 
@@ -168,6 +169,7 @@ namespace BULA
 
             public bool Refit(NativeArray<fProxy3> points, in fProxyN w)
             {
+                if (points.Length < MinimalSamples) return false;   // see fProxySphere3.Refit
                 if (!SubspaceRefit(points, in w, 3, out fProxy3 c0, out fProxy3 n)) return false;
                 OrthoBasis(n, out fProxy3 u, out fProxy3 v);
 
