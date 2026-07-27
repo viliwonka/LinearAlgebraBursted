@@ -8,7 +8,7 @@ solvers for large/sparse `A`. All share the diagnostics-struct convention from
 
 - **`QR.solveInPlace`** - full column rank, square or tall. Fastest, no rank safety net; fused kernel,
   `A`/`b` exit as undefined scratch.
-- **`QRCP.solveInPlace(ref A_to_Q, ref b, ref x, ref R, ref Pivot P, ref u[, float relTol])`** -
+- **`QRCP.solveInPlace(ref A_to_Q, ref b, ref x, ref R, ref Pivot P, ref u, relTol = -1f)`** -
   rank-deficient-safe via QRCP; `relTol < 0` auto-selects a tolerance
   (`max(m,n)·Consts.floatZeroThreshold`). Returns the *basic* (truncated) solution, not minimum-norm.
   Factors `A`'s own buffer directly (no Q scratch, no copy) - `A_to_Q` exits as a usable orthogonal

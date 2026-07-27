@@ -5,7 +5,7 @@ LP alone can't express: a quadratic objective, or integer variables.
 
 ## `QP` - convex quadratic programs
 
-`QP.solve(in Q, in c, in A, in b, senses, in xl, in xu, ref x, out double objective[, maxIter])` -
+`QP.solve(in Q, in c, in A, in b, senses, in xl, in xu, ref x, out double objective, maxIter = 0)` -
 `Q` must be symmetric (checked) and positive semidefinite (v1 contract, not checked - indefinite `Q`
 is out of scope). Finds its own feasible starting point via an auxiliary LP, so `x` is output-only.
 A box-free convenience overload drops `xl`/`xu` (unbounded variables). Dense null-space active-set
@@ -19,9 +19,10 @@ pass.
 
 ## `MIP` - mixed-integer programs
 
-`MIP.solve(in A, in b, in c, senses, in xl, in xu, in integrality, ref x, out double objective[,
-maxNodes, maxIter, absGap, relGap])` - `integrality[j]` is `0` (continuous) or `1` (integer; a
-binary variable is just an integer with `xl=0, xu=1`). Every integer variable needs a finite `xl`.
+`MIP.solve(in A, in b, in c, senses, in xl, in xu, in integrality, ref x, out double objective,
+maxNodes = 0, maxIter = 0, absGap = 0.0, relGap = 0.0)` - `integrality[j]` is `0` (continuous) or
+`1` (integer; a binary variable is just an integer with `xl=0, xu=1`). Every integer variable needs
+a finite `xl`.
 
 Branch-and-bound over the warm-started dense dual simplex: pseudocost + reliability branching picks
 the branching variable, search is best-bound-with-plunging (dive one child, queue the sibling,

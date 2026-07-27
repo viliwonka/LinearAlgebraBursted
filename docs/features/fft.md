@@ -10,7 +10,7 @@ divides by N, so `ifft(fft(x)) == x`.
   use `dft` for arbitrary N). Dispatches to table-indexed radix-4 or mixed-radix (one radix-2 stage +
   two radix-4 sub-FFTs), covering every power-of-two. Needs a workspace
   (`new floatFFTCache(n, Allocator.Persistent)`), built once and reused.
-- **`rfft(in real, ref re, ref im[, in ws])` / `irfft(...)`** - real input, packs N samples into an
+- **`rfft(in real, ref re, ref im, in ws)` / `irfft(...)`** - real input, packs N samples into an
   N/2-point complex FFT and unpacks the half spectrum (`re`/`im` length **N/2+1**; `im[0]`/`im[N/2]`
   always zero).
 - **`dft(in inRe, in inIm, ref outRe, ref outIm)` / `idft(...)`** - direct O(N²), works for

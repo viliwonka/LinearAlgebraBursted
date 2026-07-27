@@ -5,7 +5,7 @@
 - `Print.Log(in floatN a, int start = 0, int end = -1)` / `Log(in floatMxN m)` - uses
   `FixedString4096Bytes` internally, so output **silently truncates** past 4KB; fine for
   spot-checking a value mid-algorithm, not for dumping large matrices.
-- `Print.Spy(in floatMxN m[, float absThreshold = 0.01f])` - an ASCII sparsity grid (`X`/space).
+- `Print.Spy(in floatMxN m, absThreshold = 0.01f)` - an ASCII sparsity grid (`X`/space).
 - Every solver/eigensolver diagnostics struct - `DirectSolveInfo`, `RankInfo`, `SolveInfo`,
   `LstsqInfo` (see [solvers.md](solvers.md)), `EigenSolveInfo`, `LanczosInfo`, `LOBPCGInfo` (see
   [eigen.md](eigen.md#diagnostics-structs)) - has a matching `Print.Log(in <Struct>)`: a Burst-safe

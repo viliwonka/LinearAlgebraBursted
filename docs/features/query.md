@@ -5,7 +5,7 @@
 - **Enums** - `Metric{Manhattan, Euclidean, SqEuclidean, Chebyshev, Cosine, Dot}` (Cosine/Dot are
   similarities - higher is nearer; the rest are distances - lower is nearer); `Norm{L1, L2, Linf}`.
 - **Extremes** - `argMaxAbs`/`argMinAbs`, `rowArgMin`/`rowArgMax`/`colArgMin`/`colArgMax(in A, ref
-  Indices idx[, ref floatN val])`, `argMaxRowNorm`/`argMaxColNorm(in A, Norm n)`.
+  Indices idx, ref floatN val)`, `argMaxRowNorm`/`argMaxColNorm(in A, Norm n)`.
 - **Search over rows/columns** - `nearestRow`/`nearestColumn(in A, in q, Metric m, out index, out
   score)`, `farthestRow`/`farthestColumn`, `kNearestRows`/`kNearestColumns`/`kFarthestRows`/
   `kFarthestColumns(in A, in q, int k, Metric m, ref Indices idx, ref floatN scores)` (bounded

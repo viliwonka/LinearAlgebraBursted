@@ -89,10 +89,10 @@ not. Two reformulation-free exact engines, both working directly on the original
 LPInfo info = LP.lad(in A, in b, ref x, out double l1Residual);
 ```
 
-**`LP.lad(in A, in b, ref x, out objective[, maxIter])`** dispatches between `ladBR` and `ladFN` by `A.M_Rows`
+**`LP.lad(in A, in b, ref x, out objective, maxIter = 0)`** dispatches between `ladBR` and `ladFN` by `A.M_Rows`
 (the measured crossover; see Performance below). Call `ladBR`/`ladFN` directly to force one engine.
 
-An explicit-backend overload, **`LP.lad(in A, in b, ref x, out objective, LPMethod method[, maxIter])`**,
+An explicit-backend overload, **`LP.lad(in A, in b, ref x, out objective, LPMethod method, maxIter = 0)`**,
 reformulates LAD as a general LP (`x = x⁺ − x⁻`) and routes it through any `LPMethod` - exact but slower;
 kept mainly as an independent cross-check.
 

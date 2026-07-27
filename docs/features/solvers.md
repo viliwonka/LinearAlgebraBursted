@@ -18,7 +18,7 @@ this page covers the direct family and the diagnostics-struct convention shared 
   A_to_L, ref b_to_x)` fuses `decompInPlace`+`decompSolve`; `A_to_L` exits as a usable factor. Write
   the explicit `CHO.decomp` + `CHO.decompSolve` composition if `A` must survive.
 - `QR.decompSolve(ref Q, ref R, ref b, ref x)` - solve from a precomputed QR factorization, reusable
-  across multiple `b` (`b` preserved). `QR.solveInPlace(ref A, ref b, ref x[, ref u])` - precondition:
+  across multiple `b` (`b` preserved). `QR.solveInPlace(ref A, ref b, ref x, ref u)` - precondition:
   full column rank (unguarded divide on a rank-deficient diagonal); fused kernel that streams `Qᵀb`
   without ever forming `Q`, so `A`/`b` exit as undefined scratch, not usable factors. For
   rank-deficient/wide systems use `QRCP.solveInPlace` (truncated LS, see
@@ -36,8 +36,8 @@ destructive/preserving contracts - the argument type (`fProxyN` → `fProxyMxN`)
   solve a whole block; the pivot is applied to `B`'s rows.
 - `QR.decompSolve(Q, R, B, X)` (reuses one factorization, `QᵀB` is a single GEMM, `B` preserved) and
   the fused `QR.solveInPlace(A, B, X)` (destroys `A`/`B`, never forms `Q`).
-- `QRCP.decompSolve(Q, R, P, B, X[, relTol])` (from a precomputed factorization, `B` preserved) and
-  `QRCP.solveInPlace(A, B, X[, relTol])` - rank-safe truncated least squares. Like the vector form,
+- `QRCP.decompSolve(Q, R, P, B, X, relTol = -1f)` (from a precomputed factorization, `B` preserved) and
+  `QRCP.solveInPlace(A, B, X, relTol = -1f)` - rank-safe truncated least squares. Like the vector form,
   the multi-RHS `solveInPlace` is **fused and destructive**: it applies `Qᵀ` to `B`'s columns *during*
   factorization and never reconstructs `Q` (the ~⅓-runtime saving), so `A` and `B` are both destroyed.
 - `LQ.minNormSolve(A, B, X)` (underdetermined min-norm) and `SVD.pinvSolve(A, B, X)` (any shape/rank).

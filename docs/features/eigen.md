@@ -28,7 +28,7 @@ Generic `<TOp> where TOp : struct, IfloatLinearOperator`, with thin dense (`floa
   Lanczos tridiagonalization + `Eigen.valuesSymmetricInPlace` on the result → Ritz **values**.
   **`lanczosVectors<TOp>(...)`** - same tridiagonalization, then forms Ritz **vectors** too (not
   zero-alloc - allocates 3 Temp vectors internally via `Eigen.symmetricInPlace`).
-- **`Eigen.lobpcg<TOp[,TPre]>(in A[, in M], ref ws, int k, float tol, int maxIter)`** - blocked
+- **`Eigen.lobpcg<TOp, TPre>(in A, in M, ref ws, int k, float tol, int maxIter)`** - blocked
   Locally Optimal Block Preconditioned Conjugate Gradient: the `k` SMALLEST eigenpairs of a symmetric
   operator, via deflation-based locking (a converged pair is frozen and projected out of the active
   subspace) and a small dense Rayleigh-Ritz sub-problem solved with `Eigen.symmetricInPlace` (a 3-block

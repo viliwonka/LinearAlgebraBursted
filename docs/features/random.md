@@ -9,7 +9,8 @@ value between calls).
 
 - `Rand.randomInPlace<S>(ref Random rng, ref floatN dest, ref S sampler)` - generic over any sampler
   struct (vector and matrix overloads).
-- `Rand.nextUniformInPlace(ref Random, ref dest[, min, max])` - uniform shortcut.
+- `Rand.nextUniformInPlace(ref Random, ref dest)` / `(ref Random, ref dest, min, max)` -
+  uniform shortcut.
 - Integer/bool refill: `nextUniformInPlace(ref Random, ref intN dest, min, max)`,
   `nextBernoulliInPlace(ref Random, ref boolN dest, float p)`, `nextBoolInPlace` (fair coin).
 
