@@ -32,10 +32,6 @@ Whole-array and per-axis (`Rows`/`Columns`) in-place variants of `standardize`, 
 → double` (need a fractional result); `min`/`max → int` (same type); `argmin`/`argmax → int` (index).
 Whole-array only - no per-axis reductions, covariance, or in-place transforms for the integer family.
 
-## Realtime
-
-[`RollingWindow`](realtime.md) reuses `covarianceInto` for a moving covariance over a ring buffer.
-
 ## Histogram & resampling
 
 Two smaller features that live alongside Stats:

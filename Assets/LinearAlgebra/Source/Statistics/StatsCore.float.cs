@@ -684,9 +684,9 @@ namespace BULA
                 throw new System.ArgumentException("covarianceInto: C must be N_Cols x N_Cols");
 
             // Guard: M < 2 makes 1/(M−1) = 1/0 = Inf, and 0·Inf = NaN-fills every cell.
-            // Zero-fill C and return gracefully — the wrappers (covariance / correlation /
-            // RollingWindow.Covariance) all throw for M < 2; this primitive degrades without
-            // NaN for any zero-alloc realtime caller that pre-screens count.
+            // Zero-fill C and return gracefully — the wrappers (covariance / correlation)
+            // throw for M < 2; this primitive degrades without NaN for any zero-alloc
+            // caller that pre-screens count.
             if (M < 2)
             {
                 for (int i = 0; i < N; i++)
