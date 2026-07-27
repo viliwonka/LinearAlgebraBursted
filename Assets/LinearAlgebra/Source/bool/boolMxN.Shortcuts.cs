@@ -10,7 +10,7 @@ using BULA;
 
 namespace BULA {
 
-    public partial struct boolMxN : IArenaShortcuts
+    public partial struct boolMxN : IAllocShortcuts
     {
         
         public unsafe floatN floatVec(int N, bool uninit = false) => new floatN(N, Allocator.Temp, uninit);

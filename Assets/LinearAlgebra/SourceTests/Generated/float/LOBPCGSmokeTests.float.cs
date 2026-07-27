@@ -18,7 +18,7 @@ using Unity.Mathematics;
 // cross-check, preconditioned-vs-unpreconditioned iteration count, rank-deficiency stress, and the
 // generalized eigenproblem extension (A x = lambda B x, B SPD: diag-B reduction, explicit-identity
 // equivalence, buckling mapping, B-orthonormality, BSR). Managed [Test]s (main thread), matching the
-// simpler non-Burst-job test style used elsewhere in this file family (e.g. ArenaConversionsTests).
+// simpler non-Burst-job test style used elsewhere in this file family (e.g. ConvertOPTests).
 public class floatLOBPCGSmokeTests
 {
     static float Tol() => 1e-3f;

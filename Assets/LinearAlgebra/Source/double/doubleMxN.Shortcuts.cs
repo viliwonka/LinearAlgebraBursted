@@ -12,7 +12,7 @@ using BULA;
 
 namespace BULA {
 
-    public partial struct doubleMxN : IArenaShortcuts
+    public partial struct doubleMxN : IAllocShortcuts
     {
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

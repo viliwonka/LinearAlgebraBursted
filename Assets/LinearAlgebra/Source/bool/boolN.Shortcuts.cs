@@ -9,7 +9,7 @@ using BULA;
 
 namespace BULA {
 
-    public partial struct boolN : IArenaShortcuts
+    public partial struct boolN : IAllocShortcuts
     {
         
         public unsafe floatN floatVec(int N, bool uninit = false) => new floatN(N, Allocator.Temp, uninit);

@@ -16,7 +16,7 @@ using fProxy2 = Unity.Mathematics.float2;
 // Guards for ConvertOP.Convert(in fProxyN -> fProxy2): the source vector must have length >= 2,
 // otherwise reading [1] would be out of bounds. These are managed [Test]s (main thread) because
 // they assert exception behavior; the positive path is a plain element-equality check.
-public class fProxyArenaConversionsTests
+public class fProxyConvertOPTests
 {
     // Length < 2 must throw ArgumentException (cannot fill .y).
     [Test]

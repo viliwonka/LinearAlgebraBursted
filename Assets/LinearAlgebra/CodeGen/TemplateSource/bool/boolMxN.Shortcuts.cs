@@ -12,7 +12,7 @@ using BULA;
 
 namespace BULA {
 
-    public partial struct boolMxN : IArenaShortcuts
+    public partial struct boolMxN : IAllocShortcuts
     {
         //+copyReplace
         public unsafe fProxyN fProxyVec(int N, bool uninit = false) => new fProxyN(N, Allocator.Temp, uninit);

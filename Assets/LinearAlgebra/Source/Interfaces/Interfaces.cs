@@ -46,7 +46,7 @@ namespace BULA
         public UnsafeList<bool> Data { get; }
     }
 
-    public partial interface IArenaShortcuts
+    public partial interface IAllocShortcuts
     {
         
         public unsafe floatN floatVec(int n, bool uninit = false);

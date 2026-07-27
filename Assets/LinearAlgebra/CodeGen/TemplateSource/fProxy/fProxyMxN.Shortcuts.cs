@@ -9,7 +9,7 @@ using BULA;
 
 namespace BULA {
 
-    public partial struct fProxyMxN : IArenaShortcuts
+    public partial struct fProxyMxN : IAllocShortcuts
     {
         //+copyReplace
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -5,14 +5,14 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using BULA;
 
-//alsoExpand[uint]// gives uintMxN an IArenaShortcuts implementation; the inner iProxy-family
+//alsoExpand[uint]// gives uintMxN an IAllocShortcuts implementation; the inner iProxy-family
 //copy-replace block below widens to a 4th (uint) copy from this same flag, giving every int-family
 //type a uintVec/uintTempVec/uintMat/uintTempMat cross-shortcut - see the identical note in
 //iProxyN.Shortcuts.cs.
 
 namespace BULA {
 
-    public partial struct iProxyMxN : IArenaShortcuts
+    public partial struct iProxyMxN : IAllocShortcuts
     {
         //+copyReplace
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

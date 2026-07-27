@@ -5,7 +5,7 @@ using BULA;
 
 namespace BULA {
 
-    public partial struct boolN : IArenaShortcuts
+    public partial struct boolN : IAllocShortcuts
     {
         //+copyReplace
         public unsafe fProxyN fProxyVec(int N, bool uninit = false) => new fProxyN(N, Allocator.Temp, uninit);

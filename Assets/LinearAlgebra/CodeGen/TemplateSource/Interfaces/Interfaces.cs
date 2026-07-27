@@ -29,7 +29,7 @@ namespace BULA
         public UnsafeList<bool> Data { get; }
     }
 
-    public partial interface IArenaShortcuts
+    public partial interface IAllocShortcuts
     {
         //+copyReplace
         public unsafe fProxyN fProxyVec(int n, bool uninit = false);

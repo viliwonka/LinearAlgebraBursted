@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 using Unity.Collections;
 using BULA;
 
-//alsoExpand[uint]// gives uintN an IArenaShortcuts implementation (float/double/bool cross-type
+//alsoExpand[uint]// gives uintN an IAllocShortcuts implementation (float/double/bool cross-type
 //shortcuts below, unaffected by this file's own outer-type opt-in). The inner iProxy-family
 //copy-replace block below ALSO widens to a 4th (uint) copy from this same flag - TemplateConverter
 //resolves it once per file and threads it into that block too - giving every int-family type
@@ -14,7 +14,7 @@ using BULA;
 
 namespace BULA {
 
-    public partial struct iProxyN : IArenaShortcuts
+    public partial struct iProxyN : IAllocShortcuts
     {
         //+copyReplace
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

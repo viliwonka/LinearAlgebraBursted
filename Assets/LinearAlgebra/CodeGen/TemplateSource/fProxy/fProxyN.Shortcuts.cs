@@ -8,7 +8,7 @@ using BULA.Sparse;
 
 namespace BULA {
 
-    public partial struct fProxyN : IArenaShortcuts
+    public partial struct fProxyN : IAllocShortcuts
     {
         //+copyReplace
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
