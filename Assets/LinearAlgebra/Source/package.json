@@ -1,7 +1,7 @@
 {
-  "name": "com.viliwonka.burst-linear-algebra",
+  "name": "com.viliwonka.bula",
   "version": "0.1.0",
-  "displayName": "Burst Linear Algebra",
+  "displayName": "BULA — Burst Linear Algebra",
   "description": "A Burst-compiled linear algebra library for Unity: dense & block-sparse matrices, factorizations (LU/Cholesky/QR/SVD), direct/least-squares/iterative solvers, eigensolvers, FFT, statistics, ML (PCA, k-means) and generators. A natural extension of Unity.Mathematics for larger-than-4x4 problems. Getting ready for production.",
   "unity": "6000.3",
   "documentationUrl": "https://github.com/viliwonka/BULA",

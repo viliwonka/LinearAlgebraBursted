@@ -39,7 +39,7 @@ https://github.com/viliwonka/BULA.git?path=Assets/LinearAlgebra/Source
 or add it to `Packages/manifest.json`:
 
 ```json
-"com.viliwonka.burst-linear-algebra": "https://github.com/viliwonka/BULA.git?path=Assets/LinearAlgebra/Source"
+"com.viliwonka.bula": "https://github.com/viliwonka/BULA.git?path=Assets/LinearAlgebra/Source"
 ```
 
 Or clone the repo and copy `Assets/LinearAlgebra/Source` into your project. Either way the only
