@@ -3,6 +3,9 @@ using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Mathematics;
 
+#pragma warning disable 0162 // UseNative is a const: one arm of each native/deterministic split is always dead
+#pragma warning disable 1718 // x != x is the NaN test (math.isnan is not on the deterministic op set)
+
 namespace BULA
 {
     // Deterministic transcendental functions. Every routine uses only + - * / , math.floor,

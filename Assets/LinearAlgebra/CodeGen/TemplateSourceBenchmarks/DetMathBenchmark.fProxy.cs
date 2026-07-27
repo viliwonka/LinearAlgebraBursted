@@ -8,6 +8,8 @@ using Unity.Mathematics;
 
 using BULA;
 
+#pragma warning disable 1718 // x != x is the NaN test, mirroring DetMath's own edge-case contract
+
 namespace BULA.Benchmarks
 {
     // GENERATED per-dtype half of DetMathBenchmark (prototype exp + timed IJobs + row builders). The

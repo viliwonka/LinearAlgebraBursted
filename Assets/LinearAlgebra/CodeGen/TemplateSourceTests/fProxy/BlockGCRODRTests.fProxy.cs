@@ -136,7 +136,8 @@ public class fProxyBlockGCRODRTests
             // grinds); in double, bgmres resolves the isolated eigenvalue well enough that the
             // iteration count matches bgcrodr's, so the advantage isn't asserted there. double still
             // verifies correctness (converged + residual) above.
-            if (/*+choose[true|false]*/true/*-choose*/)
+            bool assertFewerIterations = /*+choose[true|false]*/true/*-choose*/;
+            if (assertFewerIterations)
                 Assert.IsTrue(giR.iterations < giG.iterations);
         }
 

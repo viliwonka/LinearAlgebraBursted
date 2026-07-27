@@ -37,7 +37,7 @@ namespace BULA
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void nextUniformInPlace(ref Random rng, ref shortN dest, short min, short max)
         {
-            if (min < int.MinValue || max > int.MaxValue)
+            if ((long)min < int.MinValue || (long)max > int.MaxValue)
                 throw new ArgumentException("Rand: min/max must be within int range for random generation");
             if (!(min <= max))
                 throw new ArgumentException("Rand: min must be <= max");
@@ -63,7 +63,7 @@ namespace BULA
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void nextUniformInPlace(ref Random rng, ref shortMxN dest, short min, short max)
         {
-            if (min < int.MinValue || max > int.MaxValue)
+            if ((long)min < int.MinValue || (long)max > int.MaxValue)
                 throw new ArgumentException("Rand: min/max must be within int range for random generation");
             if (!(min <= max))
                 throw new ArgumentException("Rand: min must be <= max");

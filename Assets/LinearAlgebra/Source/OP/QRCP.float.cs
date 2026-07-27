@@ -344,9 +344,6 @@ namespace BULA
         static DirectSolveInfo decompCoreDispatch(ref floatMxN A_to_Q, ref floatMxN R, ref Pivot P, ref floatN u,
                                                   ref floatN vn1, ref floatN vn2)
         {
-            // See decompInPlaceBlockedCore for why this is a method-local const, not a class field.
-            const int QRCP_BLOCK = 32;
-
             if (A_to_Q.N_Cols >= Consts.floatQrcpBlockMinN)   // float/double split (see Consts); default 2*QRCP_BLOCK
                 return decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2);
 
@@ -893,9 +890,6 @@ namespace BULA
                                                          ref floatMxN R, ref Pivot P, ref floatN u,
                                                          ref floatN vn1, ref floatN vn2, float relTol)
         {
-            // See decompInPlaceBlockedCore for why this is a method-local const, not a class field.
-            const int QRCP_BLOCK = 32;
-
             if (A_to_Q.N_Cols >= Consts.floatQrcpBlockMinN)   // float/double split (see Consts); default 2*QRCP_BLOCK
                 decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, 1, null, true);
             else

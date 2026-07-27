@@ -14,7 +14,7 @@ namespace BULA.Benchmarks
     // templated: copied through by codegen unchanged (singular output), so it lives once regardless
     // of how many dtype variants call it. Every overload is a thin, Burst-safe fold of one scalar's
     // raw bits onto a running op hash via Hash.combine, matching the library's own Hash contract.
-    public static class DetHash
+    internal static class DetHash
     {
         public static unsafe uint Combine(uint h, double d) => Hash.combine(h, Hash.hash((byte*)&d, sizeof(double)));
         public static uint Combine(uint h, float f) => Hash.combine(h, math.asuint(f));

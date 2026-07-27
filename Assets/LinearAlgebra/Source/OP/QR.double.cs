@@ -458,9 +458,6 @@ namespace BULA
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DirectSolveInfo decompInPlace(ref doubleMxN A_to_Q, ref doubleMxN R, ref doubleQRCache cache)
         {
-            // See qrDecompositionBlockedCore for why this is a method-local const, not a class field.
-            const int QR_BLOCK = 32;
-
             if (A_to_Q.M_Rows < A_to_Q.N_Cols)
                 throw new ArgumentException("QR.decompInPlace: Matrix A_to_Q must be square or tall (more or equal rows than cols)");
 

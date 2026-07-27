@@ -48,7 +48,7 @@ namespace BULA.Sparse
         bool _ownsLevel0;
 
         public int Levels => _levels;
-        public int Rows => _A[0].M_Rows;
+        public readonly int Rows => _A[0].M_Rows;
         /// <summary>Pre-smoothing sweeps per level per cycle.</summary>
         public int Pre => _pre;
         /// <summary>Post-smoothing sweeps per level per cycle.</summary>

@@ -340,9 +340,6 @@ namespace BULA
         static DirectSolveInfo decompCoreDispatch(ref fProxyMxN A_to_Q, ref fProxyMxN R, ref Pivot P, ref fProxyN u,
                                                   ref fProxyN vn1, ref fProxyN vn2)
         {
-            // See decompInPlaceBlockedCore for why this is a method-local const, not a class field.
-            const int QRCP_BLOCK = 32;
-
             if (A_to_Q.N_Cols >= Consts.fProxyQrcpBlockMinN)   // float/double split (see Consts); default 2*QRCP_BLOCK
                 return decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2);
 
@@ -889,9 +886,6 @@ namespace BULA
                                                          ref fProxyMxN R, ref Pivot P, ref fProxyN u,
                                                          ref fProxyN vn1, ref fProxyN vn2, fProxy relTol)
         {
-            // See decompInPlaceBlockedCore for why this is a method-local const, not a class field.
-            const int QRCP_BLOCK = 32;
-
             if (A_to_Q.N_Cols >= Consts.fProxyQrcpBlockMinN)   // float/double split (see Consts); default 2*QRCP_BLOCK
                 decompInPlaceBlockedCore(ref A_to_Q, ref R, ref P, ref u, ref vn1, ref vn2, b.Data.Ptr, 1, null, true);
             else

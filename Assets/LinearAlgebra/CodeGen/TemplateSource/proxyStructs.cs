@@ -42,8 +42,8 @@ namespace BULA
         public static bool operator >=(fProxy a, fProxy b) => a.value >= b.value;
 
         // Overridden methods for proper struct behavior
-        /*[BurstDiscard]
-        public override bool Equals(object obj) => obj is fProxy d && this.value == d.value;*/
+        [BurstDiscard]
+        public override bool Equals(object obj) => obj is fProxy d && this.value == d.value;
         public override int GetHashCode() => value.GetHashCode();
         public override string ToString() => value.ToString(); 
 
@@ -145,8 +145,8 @@ namespace BULA
         public static bool operator >=(anyProxy a, anyProxy b) => a.value >= b.value;
 
         // Overridden methods for proper struct behavior
-        /*[BurstDiscard]
-        public override bool Equals(object obj) => obj is anyProxy d && this.value == d.value;*/
+        [BurstDiscard]
+        public override bool Equals(object obj) => obj is anyProxy d && this.value == d.value;
         public override int GetHashCode() => value.GetHashCode();
         public override string ToString() => value.ToString();
 

@@ -9,6 +9,8 @@ using Unity.Burst;
 using Unity.Jobs;
 using Unity.Mathematics;
 
+#pragma warning disable 1718 // x != x is the NaN test, mirroring DetMath's own edge-case contract
+
 // Tests for DetMath, the deterministic transcendental surface (OP/DetMath.double.cs). Each function
 // is swept over its domain and compared to the Unity.Mathematics oracle within a few-ULP relative+
 // absolute tolerance (DetMath is a deterministic polynomial approximation, not bit-identical to

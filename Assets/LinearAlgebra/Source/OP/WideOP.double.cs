@@ -10,6 +10,8 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 
 
+#pragma warning disable 0162 // template-only: both dtype arms coexist here, so the second is dead code until codegen splits them
+
 namespace BULA.Internal
 {
     // Widest per-dtype SIMD vector for level-1 kernels: 8 float lanes (one AVX ymm register)
