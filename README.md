@@ -52,13 +52,16 @@ work on the library itself (templates + codegen), open the repo directly in Unit
 - [**Element-wise ops**](docs/features/comp-elementwise.md): Per component arithmetic, math functions, clamp, integer bit ops, bool logic
 - [**LA primitives**](docs/features/la-primitives.md): `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
 - [**Decompositions & direct solvers**](docs/features/decompositions.md): LU, CHO/CHOP, QR/QRCP, LQ/LQRP, Bidiag; direct solve (tri/LU/CHO/QR)
+- [**Solve conventions**](docs/features/solvers.md): the `decomp`/`solveInPlace` token grid, multiple right-hand sides, per-solver info structs
 - [**Least squares**](docs/features/least-squares.md): QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning
 - [**SVD**](docs/features/svd.md): thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation
 - [**Eigensolvers**](docs/features/eigen.md): symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG
 - [**Sparse (BSR)**](docs/features/sparse-bsr.md): block-CSR storage, builder assembly, sparse solvers/eigensolvers
 - [**LP / LAD**](docs/features/lp-lad.md): linear programming (revised/dual simplex, interior-point), exact L1/quantile regression (dense or sparse design), warm-started re-solve
 - [**QP / MIP**](docs/features/qp-mip.md): convex quadratic programs (active-set), mixed-integer programs (branch & bound)
-- [**Control**](docs/features/control.md): discrete-time LQR (cold/warm/finite-horizon gain schedule)
+- [**Control**](docs/features/control.md): discrete-time LQR (cold/warm/finite-horizon gain schedule); Kalman filtering (linear/EKF/UKF)
+- [**Optimize**](docs/features/optimize.md): nonlinear least squares (Levenberg-Marquardt, robust losses), curve fitting, scalar root/minimum search
+- [**Fit**](docs/features/fit.md): fit shapes to points with different metrics (L2/robust/RANSAC); sample points from shapes
 - [**FFT**](docs/features/fft.md): real valued rfft/irfft, complex fft/ifft, dft
 - [**Statistics**](docs/features/stats.md): vector/row/col reductions, covariance/correlation, transforms
 - [**Random**](docs/features/random.md): distribution samplers, weighted pick/shuffle, multivariate normal, structured matrices
