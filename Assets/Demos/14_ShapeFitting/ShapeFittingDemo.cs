@@ -66,6 +66,11 @@ namespace LinearAlgebraDemos
         Fit.floatLine2 fLine2;
         Fit.floatCircle fCircle;
 
+        // The fitted cylinder is INFINITE and its AxisPoint is gauge-free along the axis, so the
+        // drawn tube takes its centre and half-length from the inliers instead.
+        float3 cylMid;
+        float cylHalfLen = 4f;
+
         bool Is2D => dimension == Dim.TwoD;
 
         void OnEnable() => Allocate();
@@ -229,8 +234,28 @@ namespace LinearAlgebraDemos
             fPlane = o.Plane; fSphere = o.Sphere; fLine3 = o.Line3;
             fCyl = o.Cyl; fTorus = o.Torus; fLine2 = o.Line2; fCircle = o.Circle;
 
+            if (!Is2D && model == Model.Cylinder && ok) MeasureCylinderExtent();
+
             status = $"{dimension} {truth} -> {model} via {solver}/{metric}   " +
                      (ok ? $"ok, inliers {inliers}/{count}" : "FAILED");
+        }
+
+        // Projects the inliers onto the fitted axis and spans their range. Falls back to the fixed
+        // half-length when nothing classifies as an inlier.
+        void MeasureCylinderExtent()
+        {
+            float tMin = float.PositiveInfinity, tMax = float.NegativeInfinity;
+            for (int i = 0; i < count; i++)
+            {
+                if (fCyl.Distance(pts3[i]) > threshold) continue;
+                float t = math.dot(pts3[i] - fCyl.AxisPoint, fCyl.Axis);
+                tMin = math.min(tMin, t);
+                tMax = math.max(tMax, t);
+            }
+
+            bool any = tMin <= tMax;
+            cylMid = any ? fCyl.AxisPoint + 0.5f * (tMin + tMax) * fCyl.Axis : fCyl.AxisPoint;
+            cylHalfLen = any ? 0.5f * (tMax - tMin) : 4f;
         }
 
         // Every shape the job can produce, so one blittable struct carries the result out whichever
@@ -413,7 +438,7 @@ namespace LinearAlgebraDemos
                 case Model.Plane:    Draw.plane(fPlane.Point, fPlane.Normal, 8f, Color.cyan); break;
                 case Model.Sphere:   Draw.sphere(fSphere.Center, fSphere.Radius, Color.cyan); break;
                 case Model.Line:     Draw.line(fLine3.Point, fLine3.Direction, 12f, Color.cyan); break;
-                case Model.Cylinder: Draw.cylinder(fCyl.AxisPoint, fCyl.Axis, fCyl.Radius, 4f, Color.cyan); break;
+                case Model.Cylinder: Draw.cylinder(cylMid, fCyl.Axis, fCyl.Radius, cylHalfLen, Color.cyan); break;
                 case Model.Torus:    Draw.torus(fTorus.Center, fTorus.Axis, fTorus.MajorRadius,
                                                 fTorus.MinorRadius, Color.cyan); break;
             }
