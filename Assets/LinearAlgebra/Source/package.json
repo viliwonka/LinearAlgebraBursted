@@ -1,8 +1,8 @@
 {
   "name": "com.viliwonka.bula",
   "version": "0.1.0",
-  "displayName": "BULA — Burst Linear Algebra",
-  "description": "A Burst-compiled linear algebra library for Unity: dense & block-sparse matrices, factorizations (LU/Cholesky/QR/SVD), direct/least-squares/iterative solvers, eigensolvers, FFT, statistics, ML (PCA, k-means) and generators. A natural extension of Unity.Mathematics for larger-than-4x4 problems. Getting ready for production.",
+  "displayName": "BULA - Bursted Linear Algebra",
+  "description": "General Linear algebra/math library for Bursted/jobified code.",
   "unity": "6000.3",
   "documentationUrl": "https://github.com/viliwonka/BULA",
   "changelogUrl": "https://github.com/viliwonka/BULA/blob/main/CHANGELOG.md",
@@ -19,7 +19,9 @@
     "sparse",
     "solver",
     "svd",
-    "fft"
+    "fft",
+    "simd",
+    "krylov"
   ],
   "author": {
     "name": "Vili Volcini",
