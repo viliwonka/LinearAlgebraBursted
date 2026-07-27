@@ -84,3 +84,7 @@ crashlytics-build.properties
 .claude/
 CLAUDE.md
 .vsconfig
+
+# Internal maintainer notes - not part of the public repo
+/docs/audit/
+/docs/dev/

@@ -4,10 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-While the version is `0.x`, the public API is still being reviewed and may change
-between minor versions.
-
-## [Unreleased]
+## [1.0.0] - 2026-07-27
 
 ### Added
 
@@ -143,6 +140,13 @@ between minor versions.
 - The `transposeB` matrix products and float dot/GEMV/norm reductions run on full-register-width
   (8-lane AVX) accumulators with lane-identical fallbacks - float `A·Bᵀ` about 1.5×, float
   symmetric `A·Aᵀ` about 1.6×, float GEMV about 1.7× at mid-to-large sizes; double unchanged.
+- **Breaking - the UPM package is `com.viliwonka.bula`** (was `com.viliwonka.burst-linear-algebra`).
+  Re-add the git URL under the new name in `Packages/manifest.json`.
+- **Breaking - `Kalman` (KF/EKF/UKF, states, caches, model functor interfaces) and `Riccati` moved
+  from `BULA` into `BULA.Control`**, joining `LQR`. Add `using BULA.Control;`.
+- **Breaking - renames**: `Analysis.IsAllSame`/`IsAllEqualTo`/`IsAnyEqualTo` are now
+  `isAllSame`/`isAllEqualTo`/`isAnyEqualTo` (matching the rest of the predicate surface), and the
+  allocation-shortcut interface `IArenaShortcuts` is now `IAllocShortcuts`.
 
 ### Removed
 
@@ -162,6 +166,15 @@ between minor versions.
   They were slower than building a workspace and running one transform, and not deterministic across
   architectures. Use the workspace overloads: build a `floatFFTCache(n, allocator)` once and pass it
   (`in ws`). `dft`/`idft` still cover arbitrary (non-power-of-two) N.
+- **Breaking - `BULA.Realtime` is gone**: the `RollingWindow` ring buffer (moving mean/covariance)
+  was unfinished. `Stats.covarianceInto` remains for windowed covariance over caller-owned storage.
+
+### Fixed
+
+- `Fit.cone` could report the mirror nappe: `(d, a)` and `(-d, -a)` describe the same cone, so LM
+  legitimately converges with a negative half-angle from a wrong-way seed or warm start; the
+  epilogue took `abs(halfAngle)` without flipping the axis, returning a cone touching none of the
+  input points with `Solved == true`. The sign now folds into the reported axis.
 
 ## [0.1.0] - 2026-07-03
 

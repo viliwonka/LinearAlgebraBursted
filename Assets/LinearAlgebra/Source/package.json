@@ -1,6 +1,6 @@
 {
   "name": "com.viliwonka.bula",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "displayName": "BULA - Bursted Linear Algebra",
   "description": "General Linear algebra/math library for Bursted/jobified code.",
   "unity": "6000.3",

@@ -3,7 +3,7 @@
 This package contains algorithm implementations ported from or derived from the
 following third-party projects.
 
-## quantreg (R package) — used with permission
+## quantreg (R package) - used with permission
 
 The exact LAD / quantile-regression solvers `LP.ladBR` (Barrodale-Roberts
 specialized simplex) and `LP.ladFN` (Frisch-Newton interior point) are ports of
