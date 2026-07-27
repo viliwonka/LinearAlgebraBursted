@@ -82,3 +82,5 @@ crashlytics-build.properties
 
 # Local Claude Code config (agents, settings) - not part of the repo
 .claude/
+CLAUDE.md
+.vsconfig
