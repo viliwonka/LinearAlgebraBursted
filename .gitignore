@@ -79,3 +79,6 @@ crashlytics-build.properties
 /reference/
 
 .scratch/
+
+# Local Claude Code config (agents, settings) - not part of the repo
+.claude/
