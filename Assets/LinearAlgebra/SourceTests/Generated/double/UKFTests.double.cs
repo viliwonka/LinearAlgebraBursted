@@ -5,6 +5,7 @@
 using System;
 
 using BULA;
+using BULA.Control;
 
 using NUnit.Framework;
 using Unity.Burst;

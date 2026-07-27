@@ -10,6 +10,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 using BULA;
+using BULA.Control;
 
 namespace BULA.Benchmarks
 {

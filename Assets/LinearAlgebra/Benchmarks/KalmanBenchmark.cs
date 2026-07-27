@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 
+using BULA.Control;
+
 namespace BULA.Benchmarks
 {
     // Shared, dtype-agnostic config + table formatter for KalmanBenchmark. Public so the code-generated
