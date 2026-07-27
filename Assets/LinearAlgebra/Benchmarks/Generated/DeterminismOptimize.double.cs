@@ -164,9 +164,6 @@ namespace BULA.Benchmarks
         public doubleN z1, z2;
         public doubleMxN Kss;
 
-        public doubleMPCState mpcState;
-        public doubleN x0, reference, u0out;
-
         public doubleKFState ukfState;
         public doubleUKFCache ukfCache;
         public DetLinearKFModelDouble model;
@@ -174,7 +171,7 @@ namespace BULA.Benchmarks
         public doubleMxN Qukf;
         public doubleN uZero, zUkf;
 
-        public NativeArray<uint> HashOut; // 6 slots
+        public NativeArray<uint> HashOut; // 5 slots
 
         public void Execute()
         {
@@ -212,22 +209,13 @@ namespace BULA.Benchmarks
             h = DetHash.Combine(h, (int)steadyInfo.status);
             HashOut[3] = h;
 
-            var mpcInfo = MPC.solve(ref mpcState, in x0, in reference, ref u0out, 0);
-            h = Hash.hash(in u0out);
-            h = DetHash.Combine(h, (int)mpcInfo.status);
-            h = DetHash.Combine(h, mpcInfo.iterations);
-            h = DetHash.Combine(h, mpcInfo.activeSetChanges);
-            h = DetHash.Combine(h, mpcInfo.maxSlackViolation);
-            h = DetHash.Combine(h, mpcInfo.objective);
-            HashOut[4] = h;
-
             Kalman.ukfPredict(ref ukfState, ref ukfCache, in model, in uZero, in Qukf);
             var ukfInfo = Kalman.ukfUpdate(ref ukfState, ref ukfCache, in meas, in Rkf, in zUkf);
             h = Hash.hash(in ukfState.x);
             h = Hash.combine(h, Hash.hash(in ukfState.P));
             h = DetHash.Combine(h, ukfInfo.innovationNorm);
             h = DetHash.Combine(h, (int)ukfInfo.status);
-            HashOut[5] = h;
+            HashOut[4] = h;
         }
     }
 
@@ -453,14 +441,6 @@ namespace BULA.Benchmarks
             var z2 = new doubleN(m, Allocator.Persistent); z2[0] = (double)0.8; z2[1] = (double)0.1;
             var Kss = new doubleMxN(n, m, Allocator.Persistent);
 
-            var mpcUlo = GenerateOP.doubleVec(m, (double)(-1), Allocator.Persistent);
-            var mpcUhi = GenerateOP.doubleVec(m, (double)1, Allocator.Persistent);
-            var mpcState = new doubleMPCState(n, m, 5, Allocator.Persistent, in A, in B, in Qc, in Rc,
-                                              mpcUlo, mpcUhi);
-            var x0 = new doubleN(n, Allocator.Persistent); x0[0] = (double)1;
-            var reference = new doubleN(n, Allocator.Persistent);
-            var u0out = new doubleN(m, Allocator.Persistent, true);
-
             var ukfState = new doubleKFState(n, m, Allocator.Persistent);
             for (int i = 0; i < n; i++) ukfState.x[i] = (double)1;
             for (int i = 0; i < n; i++) ukfState.P[i, i] = (double)1;
@@ -472,12 +452,11 @@ namespace BULA.Benchmarks
             var uZero = new doubleN(m, Allocator.Persistent);
             var zUkf = new doubleN(m, Allocator.Persistent); zUkf[0] = (double)0.9; zUkf[1] = (double)0.05;
 
-            var hashOut = new NativeArray<uint>(6, Allocator.Persistent);
+            var hashOut = new NativeArray<uint>(5, Allocator.Persistent);
             var job = new DetControlJobDouble
             {
                 A = A, B = B, Qc = Qc, Rc = Rc, K = K, Sdare = Sdare,
                 kfState = kfState, Hmat = Hmat, Qkf = Qkf, Rkf = Rkf, z1 = z1, z2 = z2, Kss = Kss,
-                mpcState = mpcState, x0 = x0, reference = reference, u0out = u0out,
                 ukfState = ukfState, ukfCache = ukfCache, model = model, meas = meas, Qukf = Qukf, uZero = uZero, zUkf = zUkf,
                 HashOut = hashOut,
             };
@@ -489,13 +468,11 @@ namespace BULA.Benchmarks
                 ("control/riccati.dare.double.n4m2", hashOut[1]),
                 ("control/kalman.predictUpdate.double.n4m2", hashOut[2]),
                 ("control/kalman.steadyStateGain.double.n4m2", hashOut[3]),
-                ("control/mpc.solve.double.n4m2.N5", hashOut[4]),
-                ("control/kalman.ukfLinear.double.n4m2", hashOut[5]),
+                ("control/kalman.ukfLinear.double.n4m2", hashOut[4]),
             };
             hashOut.Dispose();
             A.Dispose(); B.Dispose(); Qc.Dispose(); Rc.Dispose(); K.Dispose(); Sdare.Dispose();
             kfState.Dispose(); Hmat.Dispose(); Qkf.Dispose(); Rkf.Dispose(); z1.Dispose(); z2.Dispose(); Kss.Dispose();
-            mpcState.Dispose(); mpcUlo.Dispose(); mpcUhi.Dispose(); x0.Dispose(); reference.Dispose(); u0out.Dispose();
             ukfState.Dispose(); ukfCache.Dispose(); modelScratch.Dispose(); uZero.Dispose(); zUkf.Dispose();
             return result;
         }

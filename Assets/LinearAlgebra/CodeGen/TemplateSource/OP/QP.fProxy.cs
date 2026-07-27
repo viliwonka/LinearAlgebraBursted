@@ -654,8 +654,8 @@ namespace BULA
         //
         // Warm-start seam: qpActiveSetCoreWarm below is the SAME loop (qpActiveSetLoop, factored out
         // of this method) seeded from a caller-persisted working-set status array instead of always
-        // deriving one fresh from x0 (see qpActiveSetCoreWarm's own doc comment) -- the entry MPC.solve
-        // uses. qpActiveSetCore's own behavior (seed-from-point every call) is unchanged.
+        // deriving one fresh from x0 (see qpActiveSetCoreWarm's own doc comment).
+        // qpActiveSetCore's own behavior (seed-from-point every call) is unchanged.
         // ============================================================================================
 
         /// <summary>
@@ -768,7 +768,7 @@ namespace BULA
         }
 
         /// <summary>
-        /// Warm-started sibling of <see cref="qpActiveSetCore"/>, for a caller (<see cref="MPC"/>) that
+        /// Warm-started sibling of <see cref="qpActiveSetCore"/>, for a caller that
         /// maintains its OWN persistent working-set status array across repeated solves of a slowly-
         /// changing problem (same Q/A/xl/xu; only c and the feasible <paramref name="x"/> differ call to
         /// call). Same feasible-<paramref name="x"/>-on-entry / phase-1-free contract as
@@ -873,8 +873,8 @@ namespace BULA
         }
 
         /// <summary>
-        /// Cross-tick-persistent warm sibling of <see cref="qpActiveSetCoreWarm"/>, for
-        /// <see cref="MPC"/>: the working-set factorization (<paramref name="wsf"/>) AND the reduced
+        /// Cross-tick-persistent warm sibling of <see cref="qpActiveSetCoreWarm"/>, for a
+        /// receding-horizon caller: the working-set factorization (<paramref name="wsf"/>) AND the reduced
         /// space (<paramref name="red"/>) are CALLER-OWNED and carried ACROSS solves (same fixed
         /// <paramref name="Q"/>/<paramref name="A"/>). Each tick the persisted factorization is
         /// UP/DOWNDATED to the new working set by only the rows that changed (drop the no-longer-tight,
@@ -2180,8 +2180,8 @@ namespace BULA
         public int opCount;                 // total log entries (= reflCount + rotCount)
         public int deadCount;               // reflectors of since-dropped columns still in the log
 
-        // alloc defaults to Temp (the per-solve cold path); MPC passes Allocator.Persistent to carry
-        // the factorization across warm-start ticks (see MPC.State).
+        // alloc defaults to Temp (the per-solve cold path); a warm-start caller passes
+        // Allocator.Persistent to carry the factorization across ticks.
         public static fProxyQPFactorState Create(int n, Allocator alloc = Allocator.Temp)
         {
             int reflCap = n + DeadCap;
@@ -2233,8 +2233,8 @@ namespace BULA
         public int changeCount;      // incremental updates since the last rebuild
         public int n;
 
-        // alloc defaults to Temp (per-solve cold path); MPC passes Allocator.Persistent to carry the
-        // reduced space across warm-start ticks (see MPC.State).
+        // alloc defaults to Temp (per-solve cold path); a warm-start caller passes
+        // Allocator.Persistent to carry the reduced space across ticks.
         public static fProxyQPReducedState Create(int n, Allocator alloc = Allocator.Temp)
         {
             return new fProxyQPReducedState

@@ -1,6 +1,39 @@
 # DEVLOG — OP
 Code comments state contracts only; history lives here (see CLAUDE.md).
 
+## MPC (removed)
+
+- 2026-07-27 | **MPC removed from the library** (user ruling: overscoped for v1.0, a control
+  application rather than a linear algebra primitive, and still churning — recondense shipped the
+  same day it was cut, unverified). Deleted: MPC/MPC.State/MPC.Info templates + tests + benchmark
+  template, the hand half of MPCBenchmark, the determinism harness's `control/mpc.solve` case
+  (control job is 5 hash slots now), and demo 15_HoverTankMPC with its three test files. The QP
+  warm seams MPC drove (qpActiveSetCoreWarm / qpActiveSetCorePersist, persistent
+  fProxyQPFactorState/fProxyQPReducedState) stay — they are caller-agnostic and tested MPC-free in
+  QPFactorStateTests.
+  LQR/DARE/Kalman untouched. The MPC entries below are history of deleted code. Revive from git
+  (`37c6ee2f` and earlier) if MPC returns post-v1.0; iLQR explicitly ruled out for v1.0 too.
+
+## MPC.recondense
+
+- 2026-07-27 | **The successive-linearization seam.** Demo 15's phase-5 decision routed around full
+  actuator-level MPC because rebuilding `fProxyMPCState` per frame costs 7.08 ms at (N=30, n=24, m=8)
+  — most of it a COLD DARE for the terminal P plus reallocating every buffer, and a reconstruct also
+  throws away the warm plan/working set/factorization. `MPC.recondense(ref s, A, B)` removes exactly
+  those costs: the constructor's condensation moved into a shared `Condense(ref s)` fill (constructor
+  allocates then fills; recondense refills in place), the terminal DARE re-solves WARM from a carried
+  `fProxyLQRState` (`lqrCarry` — the same warm overload `LQR.lqr` already exposed), and the QP
+  factorization is invalidated (`qpMeta[0]=0`, `[6]=1`) while `wstatus`/`uPlan`/`z` survive as the
+  next solve's warm start. `rowConstRHS` is deliberately NOT rebuilt — `setSoftBound` may have moved
+  it — which forced the constructor split: coefficients in `Condense`, RHS/senses written once by the
+  constructor in the same row order. Failure contract mirrors the rest of the library: a
+  non-converged DARE returns its `RiccatiInfo` and leaves the state byte-identical (the swap happens
+  only after convergence; `lqrCarry`'s own only-write-on-Converged contract protects the seed).
+  `Q`/`R` are now carried copies for this (they were construction-locals before), and the terminal
+  cost split into `autoP`/`Pexplicit` so an explicit caller P stays verbatim while an auto P tracks
+  the model. Motivating context: hovertank successive linearization at ~10 Hz against a 50 Hz solve
+  loop — the servo slew limits bound how stale the model can go between recondenses by construction.
+
 ## QP.TryAddToFactor
 
 - 2026-07-26 | **A full working set threw instead of solving.** With `s.k == n` every degree of

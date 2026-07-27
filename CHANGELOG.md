@@ -44,10 +44,6 @@ between minor versions.
 - BSR random sparse gallery generators for large-scale sparse benchmarking.
 - **Kalman filtering (`Kalman`)**: linear predict/update with a steady-state gain option, extended
   (EKF) via user Jacobian functors, and unscented (UKF, Van der Merwe scaled sigma points).
-- **Model-predictive control (`MPC.solve`)**: condensed linear MPC with box/soft constraints over
-  the warm-started active-set QP, with a persistent per-horizon state for per-frame re-solves.
-  `MPC.setSoftBound` moves the soft rows' bound between solves without rebuilding the horizon —
-  either one bound per row or one per stage — for constraints that track a moving obstacle.
 - **Nonlinear least squares (`Optimize.nlsSolve` / `Optimize.curveFit`)**: Levenberg-Marquardt
   with Nielsen damping and optional robust losses (Huber, Cauchy, Tukey).
 - Non-throwing preconditioner builds: `BlockJacobi`/`ILU0`/`IC0` gain `out PreconditionerInfo`

@@ -82,9 +82,9 @@ namespace BULA
         internal static double BlowupThreshold(in fProxyMxN Q, in fProxyMxN R) =>
             BLOWUP_FACTOR * (1.0 + FrobeniusNorm(in Q) + FrobeniusNorm(in R));
 
-        // internal (not private): the Joseph-form covariance update (Kalman) and the QP Hessian
-        // re-symmetrize (MPC) need the exact same symmetrize-after-roundoff hygiene as every SDA step
-        // here, so it is not reimplemented per caller.
+        // internal (not private): the Joseph-form covariance update (Kalman) needs the exact same
+        // symmetrize-after-roundoff hygiene as every SDA step here, so it is not reimplemented per
+        // caller.
         internal static void SymmetrizeInPlace(ref fProxyMxN M)
         {
             int n = M.M_Rows;

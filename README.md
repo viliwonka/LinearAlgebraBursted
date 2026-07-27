@@ -194,8 +194,6 @@ Example: square 2D Laplacian, solve to tolerance = √eps, double.
 | Case | N | Per step | 120-steps sum |
 |---|---|---|---|
 | `LQR.lqr` Riccati gain solve — once (LTI) or re-solved per frame (adaptive/time-varying) | n = 12, m = 4, float | cold 26 µs → warm 6 µs | ≈ 0.03 ms (gain solved once) |
-| `MPC.solve` receding-horizon step, box bounds | N = 40, n = 12, m = 4, float | cold 0.39 → warm 0.23 ms | ≈ 28 ms |
-| `MPC.solve` receding-horizon step, box + soft wall | N = 40, n = 12, m = 4, float | cold 1.14 → warm 0.27 ms | ≈ 32 ms |
 | `Kalman.ekfPredict` + `ekfUpdate` per step | n = 12, m = 6, float | 4.5 µs | ≈ 0.54 ms |
 | `Kalman.ukfPredict` + `ukfUpdate` per step | n = 12, m = 6, float | 14 µs | ≈ 1.7 ms |
 
