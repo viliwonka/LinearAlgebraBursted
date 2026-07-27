@@ -6,7 +6,7 @@ preserved), `decompInPlace` (factor into the input's own storage, input destroye
 destructive). Each also has a zero-alloc
 `ref`-workspace overload plus an allocating convenience wrapper; several route their allocating
 overload through a blocked (level-3, compact-WY/SYRK/GETRF-style) core above a measured size
-crossover - the gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceiling, see
+crossover - the gain caps out around 1.3-1.4× (bounded by `matMatDot`'s own ~70 GFLOP/s ceiling, see
 [la-primitives.md](la-primitives.md)).
 
 - **`LU.decomp(in A, ref L, ref U, ref Pivot P)`** - partial-pivoting LU, `PA = LU`, A preserved.
@@ -56,6 +56,6 @@ crossover - the gain caps out around 1.3–1.4× (bounded by `matMatDot`'s own ~
 ## Performance
 
 All dense factorizations are level-3 blocked: compact-WY for QR and LQ, right-looking POTRF/GETRF for
-Cholesky and LU, with trailing-matrix updates routed through the register-tiled GEMM (~70–90 GFLOP/s,
+Cholesky and LU, with trailing-matrix updates routed through the register-tiled GEMM (~70-90 GFLOP/s,
 see [la-primitives.md](la-primitives.md)). Solve timings are in [solvers.md](solvers.md) and the
 [README](../../README.md) benchmark table.

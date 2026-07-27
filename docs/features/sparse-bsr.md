@@ -48,9 +48,9 @@ Ryzen 9 9950X3D, single-thread Burst, median of 9.
 
 | Solver family | Fill | Speedup vs. dense |
 |---|---|---|
-| Square (CG/MINRES) | 7% | ~11–13× |
-| Square (CG/MINRES) | 33% | ~2.7–3× |
-| Rectangular (CGLS/LSQR) | 7% | ~7–8× (below the ideal ~14× - `ApplyT`'s transpose scatter is the gap) |
+| Square (CG/MINRES) | 7% | ~11-13× |
+| Square (CG/MINRES) | 33% | ~2.7-3× |
+| Rectangular (CGLS/LSQR) | 7% | ~7-8× (below the ideal ~14× - `ApplyT`'s transpose scatter is the gap) |
 
 **CG at N=1024, block size b=4 (7% fill)**, dense vs. sparse:
 

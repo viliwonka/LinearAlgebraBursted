@@ -46,14 +46,14 @@ recomputes a certified `LstsqInfo` for auditing (costs one extra Apply+ApplyT).
 
 ## Performance
 
-LSQR's sparse rectangular solve reaches ~7–8× dense at 7% fill, below the ~14× the square
+LSQR's sparse rectangular solve reaches ~7-8× dense at 7% fill, below the ~14× the square
 solvers get, because the BSR transpose traversal (`ApplyT`) is less cache-friendly than a forward
 `spMV` - see [sparse-bsr.md](sparse-bsr.md).
 
 Direct least-squares solve, overdetermined (tall m×n): plain `QR.solveInPlace` vs. rank-safe
 `QRCP.solveInPlace` on the same shapes. Both are fused (neither
 reconstructs Q); the remaining gap is the column-pivoting overhead - per-reflector partial-norm
-recomputes plus the pivoted panel's extra bookkeeping - about 1.15–1.3× over plain QR. Ryzen 9
+recomputes plus the pivoted panel's extra bookkeeping - about 1.15-1.3× over plain QR. Ryzen 9
 9950X3D, single-thread Burst, median of 9:
 
 | Kernel | Shape | float med(ms) | double med(ms) |

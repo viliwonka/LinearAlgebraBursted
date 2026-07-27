@@ -30,7 +30,7 @@ positive eigenvalues of the Jordan-Wielandt augmented matrix `[[0,A],[Aᵀ,0]]`,
 ## Performance
 
 `SVD.truncated` is the fastest *exact* top-k method for small/mid k, beating both `SVD.thin` and
-`SVD.randomized` by 3–4×; `SVD.randomized` only wins at high k% on large matrices.
+`SVD.randomized` by 3-4×; `SVD.randomized` only wins at high k% on large matrices.
 
 Ryzen 9 9950X3D, single-thread Burst, median of 9. Square N=1024:
 
