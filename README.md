@@ -25,43 +25,38 @@ For non-deterministic code, compile with `FloatMode.Fast`.
 
 ## Install
 
-Install via UPM - only the generated runtime source ships, no templates or codegen tooling. In
-*Window → Package Manager → + → Add package from git URL*:
+Only install generated runtime source.
 
+Install via UPM (Package Manager) In *Add package from git URL*:
 ```
 https://github.com/viliwonka/BULA.git?path=Assets/LinearAlgebra/Source
 ```
 
-or add it to `Packages/manifest.json`:
+or in `Packages/manifest.json`:
 
 ```json
 "com.viliwonka.bula": "https://github.com/viliwonka/BULA.git?path=Assets/LinearAlgebra/Source"
 ```
-
-Or clone the repo and copy `Assets/LinearAlgebra/Source` into your project. Either way the only
-dependency is `com.unity.collections` (pulls in Burst and Mathematics). Requires Unity 6000.3+. To
-work on the library itself (templates + codegen), open the repo directly in Unity.
 
 ## Features
 
 - [**Types**](docs/features/dense-types.md): vectors, matrices, allocation & lifetime
 - [**Element-wise ops**](docs/features/comp-elementwise.md): Per component arithmetic, math functions, clamp, integer bit ops, bool logic
 - [**LA primitives**](docs/features/la-primitives.md): `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
-- [**Decompositions & direct solvers**](docs/features/decompositions.md): LU, CHO/CHOP, QR/QRCP, LQ/LQRP, Bidiag; direct solve (tri/LU/CHO/QR)
-- [**Solve conventions**](docs/features/solvers.md): the `decomp`/`solveInPlace` token grid, multiple right-hand sides, per-solver info structs
-- [**Least squares**](docs/features/least-squares.md): QR/QRCP/SVD routes, LSQR/LSMR/CGNE, Tikhonov damping, Jacobi preconditioning
-- [**SVD**](docs/features/svd.md): thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation
+- [**Decompositions & direct solvers**](docs/features/decompositions.md): LU, CHO/CHOP, QR/QRCP, LQ/LQRP
+- [**Solve conventions**](docs/features/solvers.md): the `decomp`/`solveInPlace`, also supports multi-rhs,
+- [**Least squares**](docs/features/least-squares.md): QR/QRCP/SVD, LSQR/LSMR/CGNE, Tikhonov damping, Jacobi preconditioning
+- [**SVD**](docs/features/svd.md): 3 SVD variants, pseudo-inverse, low-rank approximation
 - [**Eigensolvers**](docs/features/eigen.md): symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG
-- [**Sparse (BSR)**](docs/features/sparse-bsr.md): block-CSR storage, builder assembly, sparse solvers/eigensolvers
-- [**LP / LAD**](docs/features/lp-lad.md): linear programming (revised/dual simplex, interior-point), exact L1/quantile regression (dense or sparse design), warm-started re-solve
-- [**QP / MIP**](docs/features/qp-mip.md): convex quadratic programs (active-set), mixed-integer programs (branch & bound)
-- [**Control**](docs/features/control.md): discrete-time LQR (cold/warm/finite-horizon gain schedule); Kalman filtering (linear/EKF/UKF)
+- [**Sparse (BSR)**](docs/features/sparse-bsr.md): block-CSR storage, builder, sparse solvers/eigensolvers
+- [**LP / LAD**](docs/features/lp-lad.md): linear program (revised/dual simplex, interior-point), exact L1/quantile regression (dense or sparse design), warm-started re-solve
+- [**QP / MIP**](docs/features/qp-mip.md): quadratic program, mixed-integer programs
+- [**Control**](docs/features/control.md): discrete-time LQR; Kalman filtering (linear/EKF/UKF)
 - [**Optimize**](docs/features/optimize.md): nonlinear least squares (Levenberg-Marquardt, robust losses), curve fitting, scalar root/minimum search
-- [**Fit**](docs/features/fit.md): fit shapes to points with different metrics (L2/robust/RANSAC); sample points from shapes
-- [**FFT**](docs/features/fft.md): real valued rfft/irfft, complex fft/ifft, dft
-- [**Statistics**](docs/features/stats.md): vector/row/col reductions, covariance/correlation, transforms
-- [**Random**](docs/features/random.md): distribution samplers, weighted pick/shuffle, multivariate normal, structured matrices
-- [**Realtime**](docs/features/realtime.md): fixed-capacity rolling window, moving mean/covariance
+- [**Fit**](docs/features/fit.md): fit shapes to points with different metrics
+- [**FFT**](docs/features/fft.md): real & complex fft/ifft, dft
+- [**Statistics**](docs/features/stats.md): vector/row/col reductions, covariance/correlation
+- [**Random**](docs/features/random.md): distribution samplers, weighted pick/shuffle, multivariate normal
 - [**Query**](docs/features/query.md): nearest/k-nearest/radius search, argmax/argmin, predicate-filtered variants
 - [**Select**](docs/features/select-bits.md): element-wise select
 - [**Hash**](docs/features/hash.md): vector/matrix, col/row reduction
