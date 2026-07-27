@@ -16,7 +16,7 @@ Per-axis, each with a `ref floatN dest` zero-alloc form and an allocating form: 
 
 ## Covariance & correlation
 
-`covarianceInto(in A, ref C)` / `covariance(in A)` / `correlation(in A)` — computed via Gram
+`covarianceInto(in A, ref C)` / `covariance(in A)` / `correlation(in A)` - computed via Gram
 formulation (center once, then `centeredᵀ · centered` through [`Blas`](la-primitives.md)'s
 `matMatDotTransA`). Degrades to a zero matrix (not NaN) when `M < 2` for the `ref`-dest primitive;
 allocating wrappers throw.
@@ -26,11 +26,11 @@ allocating wrappers throw.
 Whole-array and per-axis (`Rows`/`Columns`) in-place variants of `standardize`, `rescale` (+
 `(lo,hi)` overload), `center`, `maxAbs`, `softmax`.
 
-## Integer stats — widened-return convention
+## Integer stats - widened-return convention
 
 `sum → long` (overflow headroom); `mean`/`variance`/`stdDev`/`varianceSample`/`stdDevSample`/`median
 → double` (need a fractional result); `min`/`max → int` (same type); `argmin`/`argmax → int` (index).
-Whole-array only — no per-axis reductions, covariance, or in-place transforms for the integer family.
+Whole-array only - no per-axis reductions, covariance, or in-place transforms for the integer family.
 
 ## Realtime
 
@@ -40,12 +40,12 @@ Whole-array only — no per-axis reductions, covariance, or in-place transforms 
 
 Two smaller features that live alongside Stats:
 
-- **`Histogram`** — `histogramInto(in data, lo, hi, ref Indices counts)` (+ auto-range overload),
+- **`Histogram`** - `histogramInto(in data, lo, hi, ref Indices counts)` (+ auto-range overload),
   `densityInto`, `cdfInto` (monotone, last bin pinned to 1.0), `histogram2DInto`. Out-of-range and
   NaN samples are always dropped, never thrown (the closed upper edge `x == hi` lands in the last
   bin, not dropped). `ref`-dest only, no
   allocating wrapper.
-- **`Resample`** — `sampleAt(in data, float pos, Interp, EdgeMode) : float` (continuous-position
+- **`Resample`** - `sampleAt(in data, float pos, Interp, EdgeMode) : float` (continuous-position
   evaluation: `Nearest`/`Linear`/`Cubic` Catmull-Rom over 4 taps), `resampleInto` (1D endpoint-
   preserving resize, point-resampling, no anti-alias prefilter), `resample2DInto` (separable 2-pass).
   `EdgeMode{Clamp, Wrap, Mirror}`.

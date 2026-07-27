@@ -1,6 +1,6 @@
-# Blas, Norms & Analysis — core LA primitives
+# Blas, Norms & Analysis - core LA primitives
 
-## Blas — dot, transpose, outer product, GEMM
+## Blas - dot, transpose, outer product, GEMM
 
 Every op has a zero-alloc `ref`-destination primitive (the `ref` result must be distinct from the
 inputs) and an allocating wrapper of the same name:
@@ -35,7 +35,7 @@ Mostly matrix but also vector functions:
 - `cond(A)`,
 - `rank(A, ε)`, 
 - `determinant(A)`,
-- `logDeterminant(A, out sign)` — `log|det|` + sign (slogdet); robust where `determinant` over/underflows,
+- `logDeterminant(A, out sign)` - `log|det|` + sign (slogdet); robust where `determinant` over/underflows,
 
 ## Performance
 

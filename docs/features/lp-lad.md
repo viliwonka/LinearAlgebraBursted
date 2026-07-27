@@ -2,10 +2,10 @@
 
 Solves linear programs in canonical primal form and, on the same machinery, exact
 least-absolute-deviation (L1) regression and quantile regression.
-Every entry point is job-safe — scratch is `Allocator.Temp`, disposed before return, so the whole
+Every entry point is job-safe - scratch is `Allocator.Temp`, disposed before return, so the whole
 thing runs inside a `[BurstCompile] IJob`.
 
-## `LP.solve` — general linear programs
+## `LP.solve` - general linear programs
 
 ```csharp
 var A = new floatMxN(2, 2, Allocator.Temp);
@@ -22,21 +22,21 @@ if (info) Print.Log(info);   // implicit bool -> "reached an optimum?"
 ```
 
 `x` (length `A.N_Cols`) is overwritten with the optimal vertex; `objective` is `cᵀx`. Variables are
-non-negative by construction — model a free variable by splitting it into a `+`/`−` pair yourself,
+non-negative by construction - model a free variable by splitting it into a `+`/`−` pair yourself,
 or use `LP.lad` below, which already does that for L1 regression.
 
 ## Backends (`LPMethod`)
 
-- **`RevisedSimplex`** (default) — bounded-variable primal revised simplex over an LU-factored
+- **`RevisedSimplex`** (default) - bounded-variable primal revised simplex over an LU-factored
   basis (FTRAN/BTRAN + product-form-of-the-inverse eta file). Fastest exact backend at every
   benchmarked size on cold solves, and the fastest infeasibility certifier.
-- **`DualSimplex`** — bounded-variable dual revised simplex (dual steepest-edge pricing, long-step
+- **`DualSimplex`** - bounded-variable dual revised simplex (dual steepest-edge pricing, long-step
   Harris ratio test). The only backend that takes a warm-started basis (see below); pick it
   explicitly for cold solves only when you're already re-solving from a near-dual-feasible state.
-- **`InteriorPoint`** — Mehrotra primal-dual predictor-corrector. Scales to larger/denser LPs and
+- **`InteriorPoint`** - Mehrotra primal-dual predictor-corrector. Scales to larger/denser LPs and
   handles very ill-conditioned vertices; converges to an interior point rounded onto a vertex rather
   than an exact one, and only reports `Optimal`/`MaxIterations` (no infeasibility/unboundedness
-  certificate — that needs a homogeneous self-dual embedding).
+  certificate - that needs a homogeneous self-dual embedding).
 
 All three reach the same optimal vertex on a bounded, feasible problem; `maxIter <= 0` picks a
 size-based default for every backend.
@@ -44,15 +44,15 @@ size-based default for every backend.
 ## Warm-started re-solve
 
 Re-solving the same problem shape after a small perturbation (a tightened bound, a changed RHS) is
-much cheaper than a cold solve if the old basis is reused as the starting point — the dual simplex
+much cheaper than a cold solve if the old basis is reused as the starting point - the dual simplex
 only needs a handful of pivots to repair feasibility instead of rebuilding a vertex from scratch.
 Two escalating overloads of `LP.solve`, both routed through `DualSimplex`:
 
-- **`LP.solve(..., ref LPBasis basis)`** — seeds (and returns) the terminal basis through `basis`.
-  Pass `default(LPBasis)` the first time (managed-thread only — it self-allocates
+- **`LP.solve(..., ref LPBasis basis)`** - seeds (and returns) the terminal basis through `basis`.
+  Pass `default(LPBasis)` the first time (managed-thread only - it self-allocates
   `Allocator.Persistent`), or a job-safe `new LPBasis(n, m, Allocator.Temp)` seeded on first use.
   Re-solve by passing the same `basis` back in after mutating `A`/`b`/`c`.
-- **`LP.solve(..., ref LPBasis basis, ref floatLPCache cache)`** — additionally persists the
+- **`LP.solve(..., ref LPBasis basis, ref floatLPCache cache)`** - additionally persists the
   computational form and the basis factorization (LU + eta file) and DSE pricing weights across
   calls via the generated per-dtype `LPCache` struct (`floatLPCache`/`doubleLPCache`), skipping both
   the O(mN) form rebuild and the O(m³) refactorization a warm re-solve otherwise pays even with zero
@@ -72,16 +72,16 @@ for (int step = 0; step < steps; step++)
 basis.Dispose(); cache.Dispose();
 ```
 
-## `LP.lad` — least absolute deviation (L1 regression)
+## `LP.lad` - least absolute deviation (L1 regression)
 
-Minimizes `‖Ax − b‖₁` over a **free** `x` — robust to outliers where ordinary least squares (L2) is
+Minimizes `‖Ax − b‖₁` over a **free** `x` - robust to outliers where ordinary least squares (L2) is
 not. Two reformulation-free exact engines, both working directly on the original `m×n` design (no
 `2n+2m`-variable LP blow-up):
 
-- **`LP.ladBR`** — Barrodale-Roberts specialized simplex (a Koenker-d'Orey `rqbr` port). Converges to
-  an exact vertex — at the optimum, `n` of the `m` residuals are exactly zero. Near-constant,
+- **`LP.ladBR`** - Barrodale-Roberts specialized simplex (a Koenker-d'Orey `rqbr` port). Converges to
+  an exact vertex - at the optimum, `n` of the `m` residuals are exactly zero. Near-constant,
   few-microsecond latency at small-to-moderate `m`.
-- **`LP.ladFN`** — Frisch-Newton primal-dual interior point (Portnoy & Koenker 1997). Each iteration
+- **`LP.ladFN`** - Frisch-Newton primal-dual interior point (Portnoy & Koenker 1997). Each iteration
   is one `n×n` weighted normal solve (pivoted Cholesky); wins once `m` grows large enough that BR's
   per-pivot sweep over `m` rows dominates.
 
@@ -93,7 +93,7 @@ LPInfo info = LP.lad(in A, in b, ref x, out double l1Residual);
 (the measured crossover; see Performance below). Call `ladBR`/`ladFN` directly to force one engine.
 
 An explicit-backend overload, **`LP.lad(in A, in b, ref x, out objective, LPMethod method[, maxIter])`**,
-reformulates LAD as a general LP (`x = x⁺ − x⁻`) and routes it through any `LPMethod` — exact but slower;
+reformulates LAD as a general LP (`x = x⁺ − x⁻`) and routes it through any `LPMethod` - exact but slower;
 kept mainly as an independent cross-check.
 
 ### Quantile regression
@@ -110,7 +110,7 @@ For a fast *approximate* alternative (iteratively-reweighted least squares, no L
 
 `LP.ladFN` accepts a [block-sparse](sparse-bsr.md) `floatBSR`/`doubleBSR` design: each interior-point
 step streams the stored blocks into the `n×n` weighted normal solve, so the row count never enters
-the factorization. LAD only — `LP.solve` takes dense constraint matrices; large-scale sparse LP is
+the factorization. LAD only - `LP.solve` takes dense constraint matrices; large-scale sparse LP is
 out of scope.
 
 ## Diagnostics

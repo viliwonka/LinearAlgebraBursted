@@ -25,7 +25,7 @@ For non-deterministic code, compile with `FloatMode.Fast`.
 
 ## Install
 
-Install via UPM — only the generated runtime source ships, no templates or codegen tooling. In
+Install via UPM - only the generated runtime source ships, no templates or codegen tooling. In
 *Window → Package Manager → + → Add package from git URL*:
 
 ```
@@ -74,7 +74,7 @@ work on the library itself (templates + codegen), open the repo directly in Unit
 
 ```csharp
 // Allocation is explicit: pick an Allocator, dispose what outlives its scope.
-// Allocator.Temp is auto-freed at end of frame / job — no Dispose needed.
+// Allocator.Temp is auto-freed at end of frame / job - no Dispose needed.
 int dim = 128;
 floatN vecA = new floatN(dim, Allocator.Temp);        // zero vector
 floatN vecB = GenerateOP.floatVec(dim, 1f);           // filled with 1
@@ -191,24 +191,24 @@ Example: square 2D Laplacian, solve to tolerance = √eps, double.
 
 | Case | N | Per step | 120-steps sum |
 |---|---|---|---|
-| `LQR.lqr` Riccati gain solve — once (LTI) or re-solved per frame (adaptive/time-varying) | n = 12, m = 4, float | cold 26 µs → warm 6 µs | ≈ 0.03 ms (gain solved once) |
+| `LQR.lqr` Riccati gain solve - once (LTI) or re-solved per frame (adaptive/time-varying) | n = 12, m = 4, float | cold 26 µs → warm 6 µs | ≈ 0.03 ms (gain solved once) |
 | `Kalman.ekfPredict` + `ekfUpdate` per step | n = 12, m = 6, float | 4.5 µs | ≈ 0.54 ms |
 | `Kalman.ukfPredict` + `ukfUpdate` per step | n = 12, m = 6, float | 14 µs | ≈ 1.7 ms |
 
 ### Fitting
 
-Regression fitting — L2 (least squares) vs exact L1 (LAD) vs approximate L1 (IRLS), 2048 observations.
+Regression fitting - L2 (least squares) vs exact L1 (LAD) vs approximate L1 (IRLS), 2048 observations.
 
 | Case | N | Result |
 |---|---|---|
-| `QR.solveInPlace` — L2 least squares | 2048×4, float | 0.12 ms |
-| `LP.lad` — exact L1 (LAD) | 2048×4, float | 0.97 ms |
-| `Optimize.ladIRLS` — approximate L1 | 2048×4, float | 0.063 ms |
-| `QR.solveInPlace` — L2 least squares | 2048×64, float | 1.72 ms |
-| `LP.lad` — exact L1 (LAD) | 2048×64, float | 6.78 ms |
-| `Optimize.ladIRLS` — approximate L1 | 2048×64, float | 7.09 ms |
+| `QR.solveInPlace` - L2 least squares | 2048×4, float | 0.12 ms |
+| `LP.lad` - exact L1 (LAD) | 2048×4, float | 0.97 ms |
+| `Optimize.ladIRLS` - approximate L1 | 2048×4, float | 0.063 ms |
+| `QR.solveInPlace` - L2 least squares | 2048×64, float | 1.72 ms |
+| `LP.lad` - exact L1 (LAD) | 2048×64, float | 6.78 ms |
+| `Optimize.ladIRLS` - approximate L1 | 2048×64, float | 7.09 ms |
 
 ## License
 
-[MIT](LICENSE). Ported third-party algorithms (HiGHS, quantreg — used with permission) are
+[MIT](LICENSE). Ported third-party algorithms (HiGHS, quantreg - used with permission) are
 credited in [Third Party Notices](Assets/LinearAlgebra/Source/Third%20Party%20Notices.md).

@@ -7,18 +7,18 @@ this page covers the direct family and the diagnostics-struct convention shared 
 
 ## Direct solve family
 
-- `Blas.triUpper(ref U, ref b_to_x)` / `Blas.triLower(ref L, ref b_to_x)` — in-place triangular
+- `Blas.triUpper(ref U, ref b_to_x)` / `Blas.triLower(ref L, ref b_to_x)` - in-place triangular
   solves (precondition: non-singular diagonal, unguarded); `triUpperLU`/`triLowerLU` overloads also
   apply a `Pivot`.
 - `LU.decompSolve(ref LU, in Pivot P, ref b_to_x)` / `decompSolve(ref L, ref U, in Pivot P, ref
-  b_to_x)` — solve from either LU form (compact in-place or split L/U), factors read-only.
+  b_to_x)` - solve from either LU form (compact in-place or split L/U), factors read-only.
   `LU.solveInPlace(ref A_to_LU, ref Pivot P, ref b_to_x)` fuses `decompInPlace`+`decompSolve` into one
   driver; `A_to_LU` exits as a usable factor (valid input to a further `decompSolve`).
-- `CHO.decompSolve(ref L, ref b_to_x)` — solve from a factor, read-only. `CHO.solveInPlace(ref
+- `CHO.decompSolve(ref L, ref b_to_x)` - solve from a factor, read-only. `CHO.solveInPlace(ref
   A_to_L, ref b_to_x)` fuses `decompInPlace`+`decompSolve`; `A_to_L` exits as a usable factor. Write
   the explicit `CHO.decomp` + `CHO.decompSolve` composition if `A` must survive.
-- `QR.decompSolve(ref Q, ref R, ref b, ref x)` — solve from a precomputed QR factorization, reusable
-  across multiple `b` (`b` preserved). `QR.solveInPlace(ref A, ref b, ref x[, ref u])` — precondition:
+- `QR.decompSolve(ref Q, ref R, ref b, ref x)` - solve from a precomputed QR factorization, reusable
+  across multiple `b` (`b` preserved). `QR.solveInPlace(ref A, ref b, ref x[, ref u])` - precondition:
   full column rank (unguarded divide on a rank-deficient diagonal); fused kernel that streams `Qᵀb`
   without ever forming `Q`, so `A`/`b` exit as undefined scratch, not usable factors. For
   rank-deficient/wide systems use `QRCP.solveInPlace` (truncated LS, see
@@ -28,16 +28,16 @@ this page covers the direct family and the diagnostics-struct convention shared 
 
 Every direct solve above has a matrix-RHS overload: pass an `M×k` matrix in place of the length-`M`
 vector and each **column** is a separate right-hand side, solved together. Same method names, same
-destructive/preserving contracts — the argument type (`fProxyN` → `fProxyMxN`) picks the overload.
+destructive/preserving contracts - the argument type (`fProxyN` → `fProxyMxN`) picks the overload.
 
-- `Blas.triUpper/triLower/triUpperLU/triLowerLU(ref factor, ref B_to_X)` — the TRSM primitives.
+- `Blas.triUpper/triLower/triUpperLU/triLowerLU(ref factor, ref B_to_X)` - the TRSM primitives.
 - `LU.decompSolve` / `LU.solveInPlace`, `CHO.decompSolve` / `CHO.solveInPlace`,
-  `CHOP.decompSolve` / `CHOP.solveInPlace` (full-rank *and* rank-deficient min-norm) — factor once,
+  `CHOP.decompSolve` / `CHOP.solveInPlace` (full-rank *and* rank-deficient min-norm) - factor once,
   solve a whole block; the pivot is applied to `B`'s rows.
 - `QR.decompSolve(Q, R, B, X)` (reuses one factorization, `QᵀB` is a single GEMM, `B` preserved) and
   the fused `QR.solveInPlace(A, B, X)` (destroys `A`/`B`, never forms `Q`).
 - `QRCP.decompSolve(Q, R, P, B, X[, relTol])` (from a precomputed factorization, `B` preserved) and
-  `QRCP.solveInPlace(A, B, X[, relTol])` — rank-safe truncated least squares. Like the vector form,
+  `QRCP.solveInPlace(A, B, X[, relTol])` - rank-safe truncated least squares. Like the vector form,
   the multi-RHS `solveInPlace` is **fused and destructive**: it applies `Qᵀ` to `B`'s columns *during*
   factorization and never reconstructs `Q` (the ~⅓-runtime saving), so `A` and `B` are both destroyed.
 - `LQ.minNormSolve(A, B, X)` (underdetermined min-norm) and `SVD.pinvSolve(A, B, X)` (any shape/rank).
@@ -56,7 +56,7 @@ The fused `solveInPlace` factors once and solves all `k` RHS together (cost ≈ 
 | QR | 4.7 | 5.86 | 5.49 | 7.46 | 160× |
 | QRCP | 7.0 | 8.47 | 8.05 | 10.22 | 175× |
 
-One block call is almost as cheap as a single-RHS `solveInPlace` — the speedup comes from eliminating the
+One block call is almost as cheap as a single-RHS `solveInPlace` - the speedup comes from eliminating the
 `k`-fold refactorization. QR's block also shows the benefit of not forming Q: `QᵀB` is streamed during
 factorization, so `Q` is never reconstructed.
 
@@ -70,20 +70,20 @@ true` reads as "solved") so `if (solve(...))` call shapes keep compiling:
 
 | Struct | Fields | Used by |
 |---|---|---|
-| `DirectSolveInfo` | `status : DirectSolveStatus` | LU, CHO, un-pivoted QR/LQ, triangular solves — no rank concept |
+| `DirectSolveInfo` | `status : DirectSolveStatus` | LU, CHO, un-pivoted QR/LQ, triangular solves - no rank concept |
 | `RankInfo` | `status`, `rank` | QRCP (`solveInPlace`), CHOP, and the SVD-backed rank-revealing calls (`pinvSolve`, `pseudoInverse`, `nullspaceBasis`, `rangeBasis`) |
 | `SolveInfo` | `rnorm`, `iterations`, `status : IterativeSolveStatus` | square iterative solvers (`cg`/`minres`/`biCGStab`/`gmres`) |
 | `LstsqInfo` | `rnorm`, `Arnorm`, `xnorm`, `iterations`, `status` | least-squares Krylov solvers (`lsqr`/`lsmr`) |
 
 `DirectSolveStatus`: `Success, Singular, NotPositiveDefinite, Indefinite, RankDeficient,
 NotConverged` (the last reported by the SVD-backed rank-revealing calls when the SVD fails to
-converge — see [svd.md](svd.md)).
+converge - see [svd.md](svd.md)).
 `IterativeSolveStatus`: `Converged, MaxIterations, Breakdown`. All diagnostic fields come from numbers
-each solver already tracks internally (residual norms, iteration counts) — never an extra matvec
+each solver already tracks internally (residual norms, iteration counts) - never an extra matvec
 just to fill in a struct.
 
 Eigensolvers follow this same convention with their own structs (`EigenSolveInfo`, `LanczosInfo`,
-`LOBPCGInfo`) — see [eigen.md](eigen.md#diagnostics-structs) rather than duplicating them here.
+`LOBPCGInfo`) - see [eigen.md](eigen.md#diagnostics-structs) rather than duplicating them here.
 
 ## Performance
 

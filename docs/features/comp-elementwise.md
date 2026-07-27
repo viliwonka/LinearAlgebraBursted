@@ -40,7 +40,7 @@ All mutating methods have suffix `InPlace`.
   - `remap(oldMin,oldMax,newMin,newMax)`,
   - `atan2(y,x)`, `min`/`max`, 
 
-All of the above are in-place kernels over buffers you own — allocate first (see
+All of the above are in-place kernels over buffers you own - allocate first (see
 [dense-types](dense-types.md)), then mutate. To keep an operand, copy it
 (`new floatN(in a, Allocator.Temp)`) and mutate the copy.
 

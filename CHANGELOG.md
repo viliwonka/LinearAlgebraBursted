@@ -18,10 +18,10 @@ between minor versions.
 - `zeroInPlace()` / `fillInPlace(s)` component ops for vectors AND matrices, float through
   integer dtypes.
 - **Linear programming (`LP`)**: a bounded-variable revised simplex (default) and dual simplex over
-  an LU-factored basis, plus a Mehrotra primal-dual interior point. Dense constraint matrices only —
+  an LU-factored basis, plus a Mehrotra primal-dual interior point. Dense constraint matrices only -
   large-scale sparse LP is out of scope.
 - **Least-absolute-deviation / quantile regression (`LP.lad`)**: two reformulation-free exact
-  engines — Barrodale-Roberts specialized simplex and Frisch-Newton interior point — behind a
+  engines - Barrodale-Roberts specialized simplex and Frisch-Newton interior point - behind a
   size-routed hybrid default. Both work directly on the original design matrix, with no
   split-variable LP reformulation, and both fit an arbitrary quantile (`tau` overloads), not just
   the median. Frisch-Newton additionally accepts a sparse (BSR) design, streaming the stored blocks
@@ -39,7 +39,7 @@ between minor versions.
   (`minNormSolveInPlace`) on `QRCP` and `LQRP` (pseudoinverse-equivalent least squares for
   rank-deficient systems).
 - Multiple-right-hand-side (`AX=B`) overloads across the direct solver family (LU, Cholesky,
-  pivoted Cholesky, QR, QRCP, LQ, SVD) — factor once, solve a whole block of right-hand sides.
+  pivoted Cholesky, QR, QRCP, LQ, SVD) - factor once, solve a whole block of right-hand sides.
 - Transposed LU solves (`decompSolveTransA` / `solveInPlaceTransA`).
 - BSR random sparse gallery generators for large-scale sparse benchmarking.
 - **Kalman filtering (`Kalman`)**: linear predict/update with a steady-state gain option, extended
@@ -51,12 +51,12 @@ between minor versions.
 - `Equals`/`GetHashCode` (buffer-handle identity) on every vector/matrix type, removing the
   CS0660/CS0661 warning pair for consumers of the `==`/`!=` element-wise operators.
 - `Blas.dot(a, b, ref c, transposeA, transposeB)`: `A·Bᵀ` (and `Aᵀ·Bᵀ`) without materializing
-  the transpose — `dot(A, A, …, transposeB: true)` routes through a dedicated symmetric `A·Aᵀ`
+  the transpose - `dot(A, A, …, transposeB: true)` routes through a dedicated symmetric `A·Aᵀ`
   kernel. `Blas.dotSym` gains a `dotSymT` sibling for symmetric-by-construction `A·Bᵀ` products
   (upper triangle + mirror, ~2× and exactly symmetric output).
 - **Geometric fitting (`Fit`)**: shapes and solvers as independent pieces, combined freely. 13 shapes
   (plane, line, sphere, cylinder, cone, torus, capsule, circle, ellipse, ellipsoid, in 2D and 3D)
-  across four solvers — `irls` (any robust loss), `ransac` / `ransacLo` / `magsac` (consensus), and
+  across four solvers - `irls` (any robust loss), `ransac` / `ransacLo` / `magsac` (consensus), and
   `nls` (Levenberg-Marquardt). A shape opts into the interfaces it can honestly satisfy, so adding
   one is a single struct that immediately works with every solver it qualifies for.
 - `Fit.linear` (vertical residual) vs `Fit.total` (orthogonal / errors-in-variables), and
@@ -64,7 +64,7 @@ between minor versions.
   `ellipsoid` are constrained so only an ellipse / ellipsoid can be returned.
 - `fProxyL1Loss` alongside Huber, Cauchy and Tukey.
 - **Shape sampling (`Fit.sample`)**: shapes of finite measure draw points uniformly from their own
-  surface — by area, or by arc length for a curve.
+  surface - by area, or by arc length for a curve.
 
 ### Changed
 
@@ -73,18 +73,18 @@ between minor versions.
   they previously always reported `Success`. `QR.solveInPlace` forwards it. An ill-conditioned but
   usable factor still solves and still reports `Success`; rank-deficient systems still need the
   rank-revealing paths (`QRCP`, `SVD.pinvSolve`, `CHOP`).
-- **Breaking — `Fit.quadric` requires 10 points, not 9.** Its design has one column per coefficient
+- **Breaking - `Fit.quadric` requires 10 points, not 9.** Its design has one column per coefficient
   and the SVD needs at least as many rows; a 9-point call previously threw from inside the solver.
 
-- **Breaking — the root namespace is now `BULA`** (was `LinearAlgebra`). Update `using LinearAlgebra;`
+- **Breaking - the root namespace is now `BULA`** (was `LinearAlgebra`). Update `using LinearAlgebra;`
   → `using BULA;`, and the sub-namespaces likewise (`BULA.Sparse`, `BULA.Control`, `BULA.ML`,
   `BULA.Internal`). Assembly names (`BurstLinearAlgebra.*`), type names, folder layout, and asmdef
   references are unchanged, so this is a find-and-replace on `using` directives and any
   fully-qualified type references.
-- **Breaking — short tuning-parameter names**: `maxIterations` → `maxIter`, `tolerance` → `tol`,
+- **Breaking - short tuning-parameter names**: `maxIterations` → `maxIter`, `tolerance` → `tol`,
   `relativeTolerance` → `relTol` on every public API.
 - **Breaking**: `Eigen.valuesQR` → `Eigen.valuesQRInPlace` (it destroys `A`; the suffix now says so).
-- **Breaking — behavior**: the buffer×buffer `mulInPlace(a, b)` now multiplies INTO its receiver
+- **Breaking - behavior**: the buffer×buffer `mulInPlace(a, b)` now multiplies INTO its receiver
   (`a *= b`, `b` untouched), matching `addInPlace`/`subInPlace`/`divInPlace`; it previously mutated
   its second argument. The `*` operators are unaffected.
 - **Breaking**: `LQ.minNormSolve` takes `in A, in b` (it never modified them); bool `Analysis.isDiagonal`
@@ -108,18 +108,18 @@ between minor versions.
   level-3 factorization.
 - QRCP: blocked (dlaqps-style) panel factorization, and a fused destructive `solveInPlace` that
   skips reconstructing `Q`.
-- `LQ.minNormSolve` gains a fused fast path (factor once, apply `Qᵀ` from the reflectors) — about
+- `LQ.minNormSolve` gains a fused fast path (factor once, apply `Qᵀ` from the reflectors) - about
   2× faster.
 - Iterative/sparse solver throughput: SIMD width-4 accumulator reductions across dense GEMV, CG,
   SVD and eigen kernels; block-Jacobi and BSR block-triangular-sweep (SSOR) preconditioners; block
-  SpMM for block-operator applies; fused Krylov vector kernels — roughly 2-4× depending on kernel.
+  SpMM for block-operator applies; fused Krylov vector kernels - roughly 2-4× depending on kernel.
 - `Eigen.lobpcg`'s block operator applies are ~2.3-2.5× faster; LOBPCG itself was folded into
   `Eigen` (previously its own class).
 - API: the `Solvers` class was retired, split into `Krylov` (iterative solvers) and `Blas`
   (triangular solves); `determinant`/`logDeterminant` moved onto `Analysis`.
 - Sparse debug print (`Print.Spy` on a BSR matrix): absent blocks now render as spaces instead of
   dots, for readability on larger grids.
-- **Breaking**: the k-means workspace no longer carries a `Ct` (transposed-centroids) buffer — the
+- **Breaking**: the k-means workspace no longer carries a `Ct` (transposed-centroids) buffer - the
   assignment GEMM reads centroids through the transposed-B kernel directly.
 - Kalman/EKF/UKF steps drop several per-call transpose temporaries (`Hᵀ`, `K`, `(I−KH)ᵀ`) in favor
   of transposed-operand GEMM forms, and the UKF sigma-point covariance recombinations are now
@@ -127,33 +127,33 @@ between minor versions.
 - `Rand.spdInPlace` output is now exactly symmetric by construction (mirrored triangle instead of
   a post-hoc averaging pass); `Rand`-generated matrices and k-means/Kalman results may differ
   bitwise from previous versions at equal seeds.
-- `Blas.trans` and the symmetric-product mirror passes are cache-blocked (results unchanged —
+- `Blas.trans` and the symmetric-product mirror passes are cache-blocked (results unchanged -
   pure copy reordering).
-- GEMM cache-blocks (packed operand panels) once the product's working set exceeds ~24 MB —
-  about 1.3–1.4× at 2048×2048 — with bit-identical results to the direct route at every size.
+- GEMM cache-blocks (packed operand panels) once the product's working set exceeds ~24 MB -
+  about 1.3–1.4× at 2048×2048 - with bit-identical results to the direct route at every size.
 - Blocked factorization trailing updates (Cholesky, pivoted Cholesky, LU, QR/LQ block
-  reflectors) fuse four panel columns into each pass over the output row — factorizations are
+  reflectors) fuse four panel columns into each pass over the output row - factorizations are
   ~10–17% faster at level-3 sizes, with bit-identical results.
-- **Breaking — float numeric change**: float dot products (`Blas.dot` on vectors and everything
-  built on it) now reduce through 8-lane AVX accumulator chains — roughly 2× faster while
+- **Breaking - float numeric change**: float dot products (`Blas.dot` on vectors and everything
+  built on it) now reduce through 8-lane AVX accumulator chains - roughly 2× faster while
   operands are cache-resident. Float results differ from previous versions at the usual
   floating-point-summation-order level; double results are unchanged (up to the sign of an
   all-zero reduction). Results remain deterministic and identical across instruction sets
   (the non-AVX fallback uses the same summation tree).
 - The `transposeB` matrix products and float dot/GEMV/norm reductions run on full-register-width
-  (8-lane AVX) accumulators with lane-identical fallbacks — float `A·Bᵀ` about 1.5×, float
+  (8-lane AVX) accumulators with lane-identical fallbacks - float `A·Bᵀ` about 1.5×, float
   symmetric `A·Aᵀ` about 1.6×, float GEMV about 1.7× at mid-to-large sizes; double unchanged.
 
 ### Removed
 
-- **Breaking — the `Arena` allocator is gone.** Every vector/matrix/workspace/preconditioner is
+- **Breaking - the `Arena` allocator is gone.** Every vector/matrix/workspace/preconditioner is
   now standalone: construct with an explicit `Allocator` (`new floatN(n, Allocator.Temp)`,
   `new floatQRCache(m, n, allocator)`, `new floatIC0(in A, allocator)`, …) and `Dispose()` what
   outlives its scope; `Allocator.Temp` allocations are freed automatically at end of frame/job.
   The arena's factory conveniences moved to static classes with the same names and arguments:
   `GenerateOP` (constructors/random/kernels), `floatGallery` (test matrices), `Query`, `FFT`,
   `ConvertOP`. `Copy()`/`TempCopy()` now return `Allocator.Temp` copies.
-- **Breaking — allocating operators removed**: `+ - * / %` on vectors/matrices (and bitwise
+- **Breaking - allocating operators removed**: `+ - * / %` on vectors/matrices (and bitwise
   `~ & | ^ << >>` on integer types, logical `! & | ^` on bool types). Use the in-place kernels
   (`floatComp.addInPlace(dst, src)`, `intComp.bitwiseOrInPlace(...)`, `boolComp.notInPlace(...)`).
   Comparators (`== != < <= > >=`) remain.
@@ -163,13 +163,13 @@ between minor versions.
   architectures. Use the workspace overloads: build a `floatFFTCache(n, allocator)` once and pass it
   (`in ws`). `dft`/`idft` still cover arbitrary (non-power-of-two) N.
 
-## [0.1.0] — 2026-07-03
+## [0.1.0] - 2026-07-03
 
 First public preview. Feature-complete for its core scope and heavily tested.
 
 ### Core
 
-- Arena memory model — a stable-heap `Arena` handle over an `ArenaCore`, with
+- Arena memory model - a stable-heap `Arena` handle over an `ArenaCore`, with
   `ClearTemp` / `Dispose` lifetime and pointer-stable in-arena records for growable state.
 - Typed vectors & matrices for `float`, `double`, `int`, `short`, `long`, `bool`.
 - Element-wise ops, dot / matrix-multiply (register-tiled GEMM), transpose, outer product,
@@ -181,7 +181,7 @@ First public preview. Feature-complete for its core scope and heavily tested.
 - Decompositions: LU, Cholesky, QR & LQ (level-3 blocked, compact-WY), pivoted variants
   (QRCP), and SVD (thin, truncated GKL/Lanczos, randomized).
 - Solvers: direct, least-squares (over-determined), min-norm (under-determined),
-  and iterative — CG, MINRES, BiCGSTAB, GMRES, LSQR/LSMR with Tikhonov damping and
+  and iterative - CG, MINRES, BiCGSTAB, GMRES, LSQR/LSMR with Tikhonov damping and
   Jacobi / column-equilibration preconditioners. Every solver returns a diagnostics struct.
 - Eigensolvers: dominant eigenpair (power iteration), symmetric (Householder + QL,
   `Eigen.symmetric`), non-symmetric eigenvalues (Francis QR), and matrix-free

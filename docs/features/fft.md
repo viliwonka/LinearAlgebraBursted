@@ -1,21 +1,21 @@
 # FFT / DFT
 
-`FFT`. 1D transforms over **split real/imaginary** arrays (`floatN re`, `floatN im`) — there is no
+`FFT`. 1D transforms over **split real/imaginary** arrays (`floatN re`, `floatN im`) - there is no
 complex type. Convention: forward `X[k] = Σ x[n]·exp(-2πi·kn/N)` (no forward scaling); the inverse
 divides by N, so `ifft(fft(x)) == x`.
 
 ## Entry points
 
-- **`fft(ref re, ref im, in ws)` / `ifft(...)`** — in-place power-of-two transform (throws otherwise —
+- **`fft(ref re, ref im, in ws)` / `ifft(...)`** - in-place power-of-two transform (throws otherwise -
   use `dft` for arbitrary N). Dispatches to table-indexed radix-4 or mixed-radix (one radix-2 stage +
   two radix-4 sub-FFTs), covering every power-of-two. Needs a workspace
   (`new floatFFTCache(n, Allocator.Persistent)`), built once and reused.
-- **`rfft(in real, ref re, ref im[, in ws])` / `irfft(...)`** — real input, packs N samples into an
+- **`rfft(in real, ref re, ref im[, in ws])` / `irfft(...)`** - real input, packs N samples into an
   N/2-point complex FFT and unpacks the half spectrum (`re`/`im` length **N/2+1**; `im[0]`/`im[N/2]`
   always zero).
-- **`dft(in inRe, in inIm, ref outRe, ref outIm)` / `idft(...)`** — direct O(N²), works for
-  **arbitrary N** — the fallback when N isn't a power of two.
-- `magnitude`/`powerSpectrum`/`phase(in re, in im, ref dest)` — spectrum post-processing.
+- **`dft(in inRe, in inIm, ref outRe, ref outIm)` / `idft(...)`** - direct O(N²), works for
+  **arbitrary N** - the fallback when N isn't a power of two.
+- `magnitude`/`powerSpectrum`/`phase(in re, in im, ref dest)` - spectrum post-processing.
 
 Workspace `floatFFTCache` (twiddle tables + rfft/mixed-radix scratch) is built once via
 `new floatFFTCache(n, Allocator.Persistent)`, disposed via `.Dispose()`; single-use-at-a-time (one
@@ -49,7 +49,7 @@ on every platform) and `+ - *` do not reassociate under `Strict`, so there is no
 library-dependent rounding anywhere in the path. This is what a deterministic lockstep sim needs.
 
 **`dft`/`idft`** (the arbitrary-N fallback) compute their twiddles with `math.sin`/`math.cos`. Burst
-only guarantees those bit-identical under `FloatMode.Deterministic` (opt-in, 64-bit only) — under
+only guarantees those bit-identical under `FloatMode.Deterministic` (opt-in, 64-bit only) - under
 `Strict` they are *not* cross-architecture reproducible. The power-of-two workspace transforms are
 deterministic; `dft`/`idft` are not.
 

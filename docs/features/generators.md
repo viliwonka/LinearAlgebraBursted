@@ -24,5 +24,5 @@ wrapper.
 
 ## Performance
 
-Not benchmarked — these are setup-time/low-frequency builders, not hot-loop kernels.
+Not benchmarked - these are setup-time/low-frequency builders, not hot-loop kernels.
  
