@@ -1,21 +1,17 @@
 # BUrsted Linear Algebra
 
-A linear algebra library for Unity, supported entirely by [Burst](https://docs.unity3d.com/Packages/com.unity.burst@latest).
-It extends `Unity.Mathematics` past its fixed 4×4 ceiling: arbitrary-size vectors and matrices for
+Fully bursted mathematics library for Unity. It extends `Unity.Mathematics` past its fixed 4×4 ceiling: arbitrary-size vectors and matrices for
 `float`/`double`/`int`/`bool` and others. 
 
-Runs directly inside Unity — cross-platform, deterministic, no externally compiled library
-(C++/C#) to bind against. Fast too: Burst, SIMD/AVX, `math.select` — performance comparable to
-GNU Octave, tested on the same machine. Simple, tested API.
+Runs directly inside Unity, cross-platform, deterministic, no externally compiled DLL to bind against. Fast too - SIMD/vectorizing/cache locality.
+Performance comparable to GNU Octave solvers, tested on the same machine.
 
 It has things you would expect from linear algebra / math library:
-- Dense / Sparse matrices,
-- Solvers / eigen,
-- Decompositions,
-- Statistics,
+- dense / sparse,
+- solvers / eigen,
+- decompositions,
+- statistics,
 - FFT
-
-The public API is still being reviewed and may change before `1.0` (current version `0.1.0`).
 
 ## Determinism
 
@@ -25,7 +21,7 @@ Transcendental functions (`log`/`exp`/`sin`/...) are reimplemented to match acro
 
 By default, these deterministic transcendentals are used. To use `Unity.Mathematics`' native `math.*` instead (faster Burst-compile, but not cross-architecture deterministic), add `LINALG_NATIVE_MATH` to **Project Settings → Player → Scripting Define Symbols**.
 
-For non-deterministic code, compile with `FloatMode.Fast`. 
+For non-deterministic code, compile with `FloatMode.Fast`.
 
 ## Install
 
