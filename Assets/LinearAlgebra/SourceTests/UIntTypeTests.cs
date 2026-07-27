@@ -451,16 +451,16 @@ public class UIntTypeTests
 
             uintN v = GenerateOP.uintVec(n, 5u);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(v < 10u, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(v < 5u, false));
-            Assert.IsTrue(Analysis.IsAllEqualTo(v <= 5u, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(v > 4u, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(v > 5u, false));
-            Assert.IsTrue(Analysis.IsAllEqualTo(v >= 5u, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(v == 5u, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(v == 6u, false));
-            Assert.IsTrue(Analysis.IsAllEqualTo(v != 6u, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(v != 5u, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(v < 10u, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(v < 5u, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(v <= 5u, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(v > 4u, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(v > 5u, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(v >= 5u, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(v == 5u, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(v == 6u, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(v != 6u, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(v != 5u, false));
         }
 
         void CompareUnsignedOrderingVec()
@@ -470,15 +470,15 @@ public class UIntTypeTests
             // The decisive unsigned-vs-signed test: MaxValue (all bits set) must compare as the
             // LARGEST value, not as -1. Under signed ordering (MaxValue >  0) would be false.
             uintN big = GenerateOP.uintVec(n, UMAX);
-            Assert.IsTrue(Analysis.IsAllEqualTo(big > 0u, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(big >= 0u, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(big < 0u, false));
-            Assert.IsTrue(Analysis.IsAllEqualTo(0u < big, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(big > 0u, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(big >= 0u, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(big < 0u, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(0u < big, true));
 
             // 0 is the smallest; (0 < MaxValue) is true.
             uintN zero = GenerateOP.uintVec(n, 0u);
-            Assert.IsTrue(Analysis.IsAllEqualTo(zero < UMAX, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(zero > UMAX, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(zero < UMAX, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(zero > UMAX, false));
         }
 
         void CompareComponentVec()
@@ -488,15 +488,15 @@ public class UIntTypeTests
             uintN a = GenerateOP.uintVec(n, 3u);
             uintN b = GenerateOP.uintVec(n, 7u);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(a < b, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(a > b, false));
-            Assert.IsTrue(Analysis.IsAllEqualTo(a <= b, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(b >= a, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(a == b, false));
-            Assert.IsTrue(Analysis.IsAllEqualTo(a != b, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(a < b, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(a > b, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(a <= b, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(b >= a, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(a == b, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(a != b, true));
 
             a = b; // alias same buffer contents -> equal
-            Assert.IsTrue(Analysis.IsAllEqualTo(a == b, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(a == b, true));
         }
 
         void CompareScalarMat()
@@ -505,16 +505,16 @@ public class UIntTypeTests
 
             uintMxN m = GenerateOP.uintMat(dim, dim, 4u);
             boolMxN bm = m == 4u;
-            Assert.IsTrue(Analysis.IsAllEqualTo(bm, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(bm, true));
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(m < 5u, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(m > 4u, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(m < 5u, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(m > 4u, false));
 
             // identity matrix: diagonal ones, off-diagonal zeros -> (m == 1) is exactly diagonal
             uintMxN id = GenerateOP.uintIdentityMat(dim);
             boolMxN diag = id == 1u;
             Assert.IsTrue(Analysis.isDiagonal(diag));
-            Assert.IsFalse(Analysis.IsAllEqualTo(diag, true));
+            Assert.IsFalse(Analysis.isAllEqualTo(diag, true));
         }
 
         void CompareComponentMat()
@@ -524,9 +524,9 @@ public class UIntTypeTests
             uintMxN a = GenerateOP.uintMat(dim, dim, 2u);
             uintMxN b = GenerateOP.uintMat(dim, dim, 9u);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(a < b, true));
-            Assert.IsTrue(Analysis.IsAllEqualTo(a >= b, false));
-            Assert.IsTrue(Analysis.IsAllEqualTo(a != b, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(a < b, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(a >= b, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(a != b, true));
         }
 
         // ---- Blas -----------------------------------------------------------------------------
@@ -886,7 +886,7 @@ public class UIntTypeTests
             // though the identical bit pattern read as a signed int (int.MinValue) is negative.
             uintN v = GenerateOP.uintVec(n, 0x80000000u);
             boolN b = v.ispow2();
-            Assert.IsTrue(Analysis.IsAllEqualTo(b, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(b, true));
         }
 
         void IsPow2HighBitNonPow2()
@@ -901,7 +901,7 @@ public class UIntTypeTests
             // to confirm the pattern really is "two bits set", not a typo in the test's own literal.
             uintN v = GenerateOP.uintVec(n, 0xC0000000u);
             boolN b = v.ispow2();
-            Assert.IsTrue(Analysis.IsAllEqualTo(b, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(b, false));
 
             uintN c = v.Copy();
             c.countbitsInPlace();

@@ -32,7 +32,7 @@ namespace BULA
             return true;
         }
 
-        public static bool IsAllSame<T>(in T x) where T : unmanaged, IUnsafeBoolArray
+        public static bool isAllSame<T>(in T x) where T : unmanaged, IUnsafeBoolArray
         {
             for (int i = 1; i < x.Data.Length; i++)
             {
@@ -42,7 +42,7 @@ namespace BULA
             return true;
         } 
 
-        public static bool IsAllEqualTo<T>(in T x, bool y) where T : unmanaged, IUnsafeBoolArray
+        public static bool isAllEqualTo<T>(in T x, bool y) where T : unmanaged, IUnsafeBoolArray
         {
             for (int i = 0; i < x.Data.Length; i++)
             {
@@ -55,7 +55,7 @@ namespace BULA
         
 
 
-        public static bool IsAnyEqualTo<T>(in T x, bool y) where T : unmanaged, IUnsafeBoolArray
+        public static bool isAnyEqualTo<T>(in T x, bool y) where T : unmanaged, IUnsafeBoolArray
         {
             for (int i = 0; i < x.Data.Length; i++)
             {
@@ -70,19 +70,19 @@ namespace BULA
 
         /// <summary>Returns true if any element of x is true. any(empty) == false.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool any(in boolN x) => IsAnyEqualTo(x, true);
+        public static bool any(in boolN x) => isAnyEqualTo(x, true);
 
         /// <summary>Returns true if any element of x is true. any(empty) == false.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool any(in boolMxN x) => IsAnyEqualTo(x, true);
+        public static bool any(in boolMxN x) => isAnyEqualTo(x, true);
 
         /// <summary>Returns true if every element of x is true. all(empty) == true.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool all(in boolN x) => IsAllEqualTo(x, true);
+        public static bool all(in boolN x) => isAllEqualTo(x, true);
 
         /// <summary>Returns true if every element of x is true. all(empty) == true.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool all(in boolMxN x) => IsAllEqualTo(x, true);
+        public static bool all(in boolMxN x) => isAllEqualTo(x, true);
 
         // --- QueryOP bridge: bool mask → scalar counts ---------------------------
 

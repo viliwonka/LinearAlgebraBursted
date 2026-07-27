@@ -271,12 +271,12 @@ public class fProxyPivotTests
 
             var vecCopy = vec.Copy();
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(vec == vecCopy, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(vec == vecCopy, true));
 
             // [1, 0, 0, 0] -> [0, 0, 0, 1]
             pivot.ApplyVec(ref vec);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(vec == vecCopy, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(vec == vecCopy, true));
 
             pivot.Swap(0, 3);
 
@@ -289,7 +289,7 @@ public class fProxyPivotTests
 
             pivot.ApplyInverseVec(ref vec);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(vec == vecCopy, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(vec == vecCopy, true));
 
             pivot.Dispose();
         }

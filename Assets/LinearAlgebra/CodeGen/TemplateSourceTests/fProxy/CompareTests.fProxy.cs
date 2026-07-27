@@ -162,10 +162,10 @@ public class fProxyCompareTests
             fProxyN v = new fProxyN(dim, Allocator.Temp);
 
             var boolVec = v == 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             boolVec = v == 1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void VecNotEquals()
@@ -175,10 +175,10 @@ public class fProxyCompareTests
             fProxyN v = new fProxyN(dim, Allocator.Temp);
 
             var boolVec = v != 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             boolVec = v != 1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
         }
 
         public void VecLess()
@@ -188,10 +188,10 @@ public class fProxyCompareTests
             fProxyN v = new fProxyN(dim, Allocator.Temp);
 
             var boolVec = v < 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             boolVec = v < 1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
         }
 
         public void VecLessOrEqual()
@@ -202,13 +202,13 @@ public class fProxyCompareTests
 
             var boolVec = v <= 0f;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
             boolVec = v <= 1f;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             boolVec = v <= -1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void VecGreater()
@@ -218,10 +218,10 @@ public class fProxyCompareTests
             fProxyN v = new fProxyN(dim, Allocator.Temp);
 
             var boolVec = v > 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             boolVec = v > -1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
         }
 
         public void VecGreaterOrEqual()
@@ -231,13 +231,13 @@ public class fProxyCompareTests
             fProxyN v = new fProxyN(dim, Allocator.Temp);
 
             var boolVec = v >= 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             boolVec = v >= -1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             boolVec = v >= 1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void MatEquals()
@@ -247,10 +247,10 @@ public class fProxyCompareTests
             fProxyMxN m = new fProxyMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m == 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m == 1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void MatNotEquals()
@@ -260,10 +260,10 @@ public class fProxyCompareTests
             fProxyMxN m = new fProxyMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m != 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             boolMat = m != 1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
         }
 
         public void MatLess()
@@ -273,10 +273,10 @@ public class fProxyCompareTests
             fProxyMxN m = new fProxyMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m < 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             boolMat = m < 1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
         }
 
         public void MatLessOrEqual()
@@ -286,13 +286,13 @@ public class fProxyCompareTests
             fProxyMxN m = new fProxyMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m <= 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m <= 1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m <= -1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void MatGreater()
@@ -302,10 +302,10 @@ public class fProxyCompareTests
             fProxyMxN m = new fProxyMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m > 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             boolMat = m > -1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
         }
 
         public void MatGreaterOrEqual()
@@ -315,13 +315,13 @@ public class fProxyCompareTests
             fProxyMxN m = new fProxyMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m >= 0f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m >= -1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m >= 1f;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void VecRandom()
@@ -334,22 +334,22 @@ public class fProxyCompareTests
 
             var boolVec = v == 0f;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v != 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v < 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v > 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v <= 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v >= 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void MatRandom()
@@ -361,22 +361,22 @@ public class fProxyCompareTests
 
             var boolMat = m == 0f;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m != 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m < 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m > 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m <= 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m >= 0f;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
 
         public void MatDiagonal()
@@ -388,8 +388,8 @@ public class fProxyCompareTests
             var boolMat = m0 == 1f;
 
             Assert.IsTrue(Analysis.isDiagonal(boolMat));
-            Assert.IsFalse(Analysis.IsAllEqualTo(boolMat, true));
-            Assert.IsFalse(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsFalse(Analysis.isAllEqualTo(boolMat, true));
+            Assert.IsFalse(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void VecVecEquals()
@@ -401,13 +401,13 @@ public class fProxyCompareTests
 
             var boolVec = v0 == v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0[0] = 1f;
 
             boolVec = v0 == v1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void VecVecNotEquals()
@@ -419,13 +419,13 @@ public class fProxyCompareTests
 
             var boolVec = v0 != v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 != v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void VecVecLess()
@@ -437,12 +437,12 @@ public class fProxyCompareTests
             fProxyN v1 = GenerateOP.fProxyLinVec(dim, 2f, 3f, Allocator.Temp);
 
             var boolVec = v0 < v1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 < v1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void VecVecLessOrEqual()
@@ -454,20 +454,20 @@ public class fProxyCompareTests
 
             var boolVec = v0 <= v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 <= v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = GenerateOP.fProxyLinVec(dim, 0f, 1f, Allocator.Temp);
             v1 = GenerateOP.fProxyLinVec(dim, 1f, 0f, Allocator.Temp);
 
             boolVec = v0 <= v1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void VecVecGreater()
@@ -479,22 +479,22 @@ public class fProxyCompareTests
 
             var boolVec = v0 > v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             v0 = v1;
 
             boolVec = v0 > v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             v0 = GenerateOP.fProxyLinVec(dim, 1f, 0f, Allocator.Temp);
             v1 = GenerateOP.fProxyLinVec(dim, 0f, 1f, Allocator.Temp);
 
             boolVec = v0 > v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v1 > v0;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void VecVecGreaterOrEqual()
@@ -506,16 +506,16 @@ public class fProxyCompareTests
 
             var boolVec = v0 >= v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
             v0 = v1;
 
             boolVec = v0 >= v1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = GenerateOP.fProxyLinVec(dim, 1f, 0f, Allocator.Temp);
 
             boolVec = v0 >= v1;
-            Assert.IsTrue(Analysis.IsAllSame(boolVec));
+            Assert.IsTrue(Analysis.isAllSame(boolVec));
         }
 
         public void VecVecRandom()
@@ -529,22 +529,22 @@ public class fProxyCompareTests
             v0[1] = 1f-v1[1];
             var boolVec = v0 == v1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 != v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 < v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 > v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 <= v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 >= v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void MatMatEquals()
@@ -555,7 +555,7 @@ public class fProxyCompareTests
             fProxyMxN m1 = GenerateOP.fProxyRandomMat(dim, dim, 0f, 1f, allocator: Allocator.Temp);
 
             var boolMat = m0 == m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             m0[0,0] = 1f;
             m0[1,1] = 1f;
@@ -563,7 +563,7 @@ public class fProxyCompareTests
             m0[3,3] = 1f;
 
             boolMat = m0 == m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
 
         public void MatMatNotEquals()
@@ -574,12 +574,12 @@ public class fProxyCompareTests
             fProxyMxN m1 = GenerateOP.fProxyRandomMat(dim, dim, 0f, 1f, 2131, Allocator.Temp);
 
             var boolMat = m0 != m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             m1 = GenerateOP.fProxyRandomMat(dim, dim, 2f, 3f, 2131, Allocator.Temp);
 
             boolMat = m0 != m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
         }
 
         public void MatMatLess()
@@ -590,12 +590,12 @@ public class fProxyCompareTests
             fProxyMxN m1 = GenerateOP.fProxyRandomMat(dim, dim, 2f, 3f, 2131, Allocator.Temp);
 
             var boolMat = m0 < m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             m0 = m1;
 
             boolMat = m0 < m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void MatMatLessOrEqual()
@@ -607,19 +607,19 @@ public class fProxyCompareTests
 
             var boolMat = m0 <= m1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             m0 = m1;
 
             boolMat = m0 <= m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             m0 = GenerateOP.fProxyRandomMat(dim, dim, 1f, 0f, 2131, Allocator.Temp);
             m1 = GenerateOP.fProxyRandomMat(dim, dim, 0f, 1f, 2131, Allocator.Temp);
 
             boolMat = m0 <= m1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
 
         public void MatMatGreater()
@@ -630,21 +630,21 @@ public class fProxyCompareTests
             fProxyMxN m1 = GenerateOP.fProxyRandomMat(dim, dim, 2f, 3f, 2131, Allocator.Temp);
 
             var boolMat = m0 > m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             m0 = m1;
 
             boolMat = m0 > m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             m0 = GenerateOP.fProxyRandomMat(dim, dim, 1f, 0f, 2131, Allocator.Temp);
             m1 = GenerateOP.fProxyRandomMat(dim, dim, 0f, 1f, 2131, Allocator.Temp);
 
             boolMat = m0 > m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m1 > m0;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
 
         public void MatMatGreaterOrEqual()
@@ -655,17 +655,17 @@ public class fProxyCompareTests
             fProxyMxN m1 = GenerateOP.fProxyRandomMat(dim, dim, 2f, 3f, 2131, Allocator.Temp);
 
             var boolMat = m0 >= m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             m0 = m1;
 
             boolMat = m0 >= m1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
             m0 = GenerateOP.fProxyRandomMat(dim, dim, 1f, 0f, 2131, Allocator.Temp);
 
             boolMat = m0 >= m1;
-            Assert.IsTrue(Analysis.IsAllSame(boolMat));
+            Assert.IsTrue(Analysis.isAllSame(boolMat));
         }
 
         public void MatMatRandom()
@@ -679,22 +679,22 @@ public class fProxyCompareTests
             m0[0,1] = 1f - m1[0,1];
             var boolMat = m0 == m1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 != m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 < m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 > m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 <= m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 >= m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
     }
 

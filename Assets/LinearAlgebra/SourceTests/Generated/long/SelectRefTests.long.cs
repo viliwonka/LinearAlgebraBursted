@@ -10,7 +10,7 @@ using Unity.Jobs;
 
 // Integer-family mirror of fProxySelectRefTests (SelectRefTests.fProxy.cs). select() is exact data
 // movement (dst[i] = c[i] ? b[i] : a[i]) - no arithmetic, no rounding - so results are compared for
-// EXACT equality via the componentwise `==` operator + Analysis.IsAllEqualTo, not a tolerance
+// EXACT equality via the componentwise `==` operator + Analysis.isAllEqualTo, not a tolerance
 // check. (uint is NOT expanded from this template - see SourceTests/UIntTypeTests.cs for a couple
 // of hand-written uint select cases alongside its other hand-authored unsigned coverage.)
 public class longSelectRefTests
@@ -75,7 +75,7 @@ public class longSelectRefTests
             var D = new longN(N, Allocator.Temp);
             Select.select(in a, in b, in c, ref D);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(R == D, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(R == D, true));
         }
 
         // Same select(a,b,c) formula as VecCond, for boolMxN cond (matrix).
@@ -93,7 +93,7 @@ public class longSelectRefTests
             var D = new longMxN(M, N, Allocator.Temp);
             Select.select(in a, in b, in c, ref D);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(R == D, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(R == D, true));
         }
 
         // ---- scalar-bool condition: c=true -> dest must equal b; c=false -> dest must equal a
@@ -108,7 +108,7 @@ public class longSelectRefTests
             var D = new longN(N, Allocator.Temp);
             Select.select(in a, in b, true, ref D);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(b == D, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(b == D, true));
         }
 
         void VecScalarFalse()
@@ -121,7 +121,7 @@ public class longSelectRefTests
             var D = new longN(N, Allocator.Temp);
             Select.select(in a, in b, false, ref D);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(a == D, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(a == D, true));
         }
 
         void MatScalarTrue()
@@ -135,7 +135,7 @@ public class longSelectRefTests
             var D = new longMxN(M, N, Allocator.Temp);
             Select.select(in a, in b, true, ref D);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(b == D, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(b == D, true));
         }
 
         void MatScalarFalse()
@@ -149,7 +149,7 @@ public class longSelectRefTests
             var D = new longMxN(M, N, Allocator.Temp);
             Select.select(in a, in b, false, ref D);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(a == D, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(a == D, true));
         }
 
         // Elementwise aliasing IS allowed (no guard): select(a, b, c, ref a) must match the
@@ -170,7 +170,7 @@ public class longSelectRefTests
             // Now alias the destination onto input a.
             Select.select(in a, in b, in c, ref a);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(R == a, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(R == a, true));
         }
     }
 

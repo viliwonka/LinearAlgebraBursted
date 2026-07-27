@@ -19,9 +19,9 @@ public class BoolAnalysisTests
         public enum TestType
         {
             isDiagonal,
-            IsAllSame,
-            IsAllEqualTo,
-            IsAnyEqualTo,
+            isAllSame,
+            isAllEqualTo,
+            isAnyEqualTo,
             any,
             all,
         }
@@ -35,14 +35,14 @@ public class BoolAnalysisTests
                 case TestType.isDiagonal:
                     isDiagonal();
                     break;
-                case TestType.IsAllSame:
-                    IsAllSame();
+                case TestType.isAllSame:
+                    isAllSame();
                     break;
-                case TestType.IsAllEqualTo:
-                    IsAllEqualTo();
+                case TestType.isAllEqualTo:
+                    isAllEqualTo();
                     break;
-                case TestType.IsAnyEqualTo:
-                    IsAnyEqualTo();
+                case TestType.isAnyEqualTo:
+                    isAnyEqualTo();
                     break;
                 case TestType.any:
                     any();
@@ -82,44 +82,44 @@ public class BoolAnalysisTests
             Assert.IsFalse(Analysis.isDiagonal(rect));
         }
 
-        void IsAllSame()
+        void isAllSame()
         {
             int dim = 64;
             boolN v = GenerateOP.boolRandomVec(dim);
 
-            Assert.IsFalse(Analysis.IsAllSame(v));
+            Assert.IsFalse(Analysis.isAllSame(v));
 
             boolComp.andInPlace(v, false);
 
-            Assert.IsTrue(Analysis.IsAllSame(v));
+            Assert.IsTrue(Analysis.isAllSame(v));
         }
 
-        void IsAllEqualTo()
+        void isAllEqualTo()
         {
             int dim = 64;
             boolN v = GenerateOP.boolRandomVec(dim);
 
-            Assert.IsFalse(Analysis.IsAllEqualTo(v, true));
-            Assert.IsFalse(Analysis.IsAllEqualTo(v, false));
+            Assert.IsFalse(Analysis.isAllEqualTo(v, true));
+            Assert.IsFalse(Analysis.isAllEqualTo(v, false));
 
             boolComp.orInPlace(v, true);
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(v, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(v, true));
         }
 
-        void IsAnyEqualTo()
+        void isAnyEqualTo()
         {
             int dim = 64;
             boolN v = new boolN(dim, Allocator.Temp);
 
-            Assert.IsFalse(Analysis.IsAnyEqualTo(v, true));
+            Assert.IsFalse(Analysis.isAnyEqualTo(v, true));
 
             v[0] = true;
 
-            Assert.IsTrue(Analysis.IsAnyEqualTo(v, true));
+            Assert.IsTrue(Analysis.isAnyEqualTo(v, true));
         }
 
-        // any/all — thin sugar over IsAnyEqualTo(x,true)/IsAllEqualTo(x,true).
+        // any/all — thin sugar over isAnyEqualTo(x,true)/isAllEqualTo(x,true).
         // Empty semantics (vacuous truth, matching math.any/math.all):
         //   any(empty) == false, all(empty) == true.
 

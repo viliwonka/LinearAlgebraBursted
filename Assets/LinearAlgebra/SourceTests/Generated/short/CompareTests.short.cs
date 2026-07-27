@@ -174,10 +174,10 @@ public class shortCompareTests
             shortN v = new shortN(dim, Allocator.Temp);
 
             var boolVec = v == 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             boolVec = v == 1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void VecNotEquals()
@@ -187,10 +187,10 @@ public class shortCompareTests
             shortN v = new shortN(dim, Allocator.Temp);
 
             var boolVec = v != 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             boolVec = v != 1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
         }
 
         public void VecLess()
@@ -200,10 +200,10 @@ public class shortCompareTests
             shortN v = new shortN(dim, Allocator.Temp);
 
             var boolVec = v < 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             boolVec = v < 1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
         }
 
         public void VecLessOrEqual()
@@ -214,13 +214,13 @@ public class shortCompareTests
 
             var boolVec = v <= 0;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
             boolVec = v <= 1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             boolVec = v <= -1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void VecGreater()
@@ -230,10 +230,10 @@ public class shortCompareTests
             shortN v = new shortN(dim, Allocator.Temp);
 
             var boolVec = v > 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             boolVec = v > -1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
         }
 
         public void VecGreaterOrEqual()
@@ -243,13 +243,13 @@ public class shortCompareTests
             shortN v = new shortN(dim, Allocator.Temp);
 
             var boolVec = v >= 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             boolVec = v >= -1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             boolVec = v >= 1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void MatEquals()
@@ -259,10 +259,10 @@ public class shortCompareTests
             shortMxN m = new shortMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m == 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m == 1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void MatNotEquals()
@@ -272,10 +272,10 @@ public class shortCompareTests
             shortMxN m = new shortMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m != 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             boolMat = m != 1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
         }
 
         public void MatLess()
@@ -285,10 +285,10 @@ public class shortCompareTests
             shortMxN m = new shortMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m < 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             boolMat = m < 1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
         }
 
         public void MatLessOrEqual()
@@ -298,13 +298,13 @@ public class shortCompareTests
             shortMxN m = new shortMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m <= 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m <= 1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m <= -1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void MatGreater()
@@ -314,10 +314,10 @@ public class shortCompareTests
             shortMxN m = new shortMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m > 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             boolMat = m > -1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
         }
 
         public void MatGreaterOrEqual()
@@ -327,13 +327,13 @@ public class shortCompareTests
             shortMxN m = new shortMxN(dim, dim, Allocator.Temp);
 
             var boolMat = m >= 0;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m >= -1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             boolMat = m >= 1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void VecRandom()
@@ -345,22 +345,22 @@ public class shortCompareTests
 
             var boolVec = v == 0;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v != 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v < 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v > 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v <= 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v >= 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void MatRandom()
@@ -372,22 +372,22 @@ public class shortCompareTests
 
             var boolMat = m == 0;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m != 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m < 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m > 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m <= 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m >= 0;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
 
         public void MatDiagonal()
@@ -399,8 +399,8 @@ public class shortCompareTests
             var boolMat = m0 == 1;
 
             Assert.IsTrue(Analysis.isDiagonal(boolMat));
-            Assert.IsFalse(Analysis.IsAllEqualTo(boolMat, true));
-            Assert.IsFalse(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsFalse(Analysis.isAllEqualTo(boolMat, true));
+            Assert.IsFalse(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void VecVecEquals()
@@ -412,13 +412,13 @@ public class shortCompareTests
 
             var boolVec = v0 == v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0[0] = 1;
 
             boolVec = v0 == v1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void VecVecNotEquals()
@@ -430,13 +430,13 @@ public class shortCompareTests
 
             var boolVec = v0 != v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 != v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void VecVecLess()
@@ -448,12 +448,12 @@ public class shortCompareTests
             shortN v1 = GenerateOP.shortLinVec(dim, 200, 300);
 
             var boolVec = v0 < v1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 < v1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
         }
 
         public void VecVecLessOrEqual()
@@ -465,20 +465,20 @@ public class shortCompareTests
 
             var boolVec = v0 <= v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = v1;
 
             boolVec = v0 <= v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = GenerateOP.shortLinVec(dim, 0, 100);
             v1 = GenerateOP.shortLinVec(dim, 100, 0);
 
             boolVec = v0 <= v1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void VecVecGreater()
@@ -490,22 +490,22 @@ public class shortCompareTests
 
             var boolVec = v0 > v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             v0 = v1;
 
             boolVec = v0 > v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
 
             v0 = GenerateOP.shortLinVec(dim, 100, 0);
             v1 = GenerateOP.shortLinVec(dim, 0, 100);
 
             boolVec = v0 > v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v1 > v0;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void VecVecGreaterOrEqual()
@@ -517,16 +517,16 @@ public class shortCompareTests
 
             var boolVec = v0 >= v1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, false));
             v0 = v1;
 
             boolVec = v0 >= v1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolVec, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolVec, true));
 
             v0 = GenerateOP.shortLinVec(dim, 1, 0);
 
             boolVec = v0 >= v1;
-            Assert.IsTrue(Analysis.IsAllSame(boolVec));
+            Assert.IsTrue(Analysis.isAllSame(boolVec));
         }
 
         public void VecVecRandom()
@@ -540,22 +540,22 @@ public class shortCompareTests
             v0[1] = (short)(1-v1[1]);
             var boolVec = v0 == v1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 != v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 < v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 > v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 <= v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
 
             boolVec = v0 >= v1;
-            Assert.IsFalse(Analysis.IsAllSame(boolVec));
+            Assert.IsFalse(Analysis.isAllSame(boolVec));
         }
 
         public void MatMatEquals()
@@ -566,7 +566,7 @@ public class shortCompareTests
             shortMxN m1 = GenerateOP.shortRandomMat(dim, dim, 0, 100);
 
             var boolMat = m0 == m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             m0[0,0] = 1;
             m0[1,1] = 1;
@@ -574,7 +574,7 @@ public class shortCompareTests
             m0[3,3] = 1;
 
             boolMat = m0 == m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
 
         public void MatMatNotEquals()
@@ -585,12 +585,12 @@ public class shortCompareTests
             shortMxN m1 = GenerateOP.shortRandomMat(dim, dim, 0, 100, 2131);
 
             var boolMat = m0 != m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             m1 = GenerateOP.shortRandomMat(dim, dim, 200, 300, 2131);
 
             boolMat = m0 != m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
         }
 
         public void MatMatLess()
@@ -601,12 +601,12 @@ public class shortCompareTests
             shortMxN m1 = GenerateOP.shortRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 < m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             m0 = m1;
 
             boolMat = m0 < m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
         }
 
         public void MatMatLessOrEqual()
@@ -618,19 +618,19 @@ public class shortCompareTests
 
             var boolMat = m0 <= m1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             m0 = m1;
 
             boolMat = m0 <= m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
 
             m0 = GenerateOP.shortRandomMat(dim, dim, 100, 0, 2131);
             m1 = GenerateOP.shortRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 <= m1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
 
         public void MatMatGreater()
@@ -641,21 +641,21 @@ public class shortCompareTests
             shortMxN m1 = GenerateOP.shortRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 > m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             m0 = m1;
 
             boolMat = m0 > m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             m0 = GenerateOP.shortRandomMat(dim, dim, 100, 0, 2131);
             m1 = GenerateOP.shortRandomMat(dim, dim, 0, 100, 2131);
 
             boolMat = m0 > m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m1 > m0;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
 
         public void MatMatGreaterOrEqual()
@@ -666,17 +666,17 @@ public class shortCompareTests
             shortMxN m1 = GenerateOP.shortRandomMat(dim, dim, 200, 300, 2131);
 
             var boolMat = m0 >= m1;
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, false));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, false));
 
             m0 = m1;
 
             boolMat = m0 >= m1;
 
-            Assert.IsTrue(Analysis.IsAllEqualTo(boolMat, true));
+            Assert.IsTrue(Analysis.isAllEqualTo(boolMat, true));
             m0 = GenerateOP.shortRandomMat(dim, dim, 100, 0, 2131);
 
             boolMat = m0 >= m1;
-            Assert.IsTrue(Analysis.IsAllSame(boolMat));
+            Assert.IsTrue(Analysis.isAllSame(boolMat));
         }
 
         public void MatMatRandom()
@@ -690,22 +690,22 @@ public class shortCompareTests
             m0[0,1] = (short)(1 - m1[0,1]);
             var boolMat = m0 == m1;
 
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 != m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 < m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 > m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 <= m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
 
             boolMat = m0 >= m1;
-            Assert.IsFalse(Analysis.IsAllSame(boolMat));
+            Assert.IsFalse(Analysis.isAllSame(boolMat));
         }
 
         // ispow2 is a genuine PREDICATE (not a relational comparison against a second operand), so
