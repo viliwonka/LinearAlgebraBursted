@@ -160,6 +160,9 @@ namespace BULA
 
             apex = new fProxy3(p[0], p[1], p[2]);
             axisDir = math.normalize(new fProxy3(p[3], p[4], p[5]));
+            // (d, a) and (-d, -a) are the same cone, so LM may converge with a negative angle;
+            // fold that sign into the axis, or the report names the mirror nappe.
+            if (p[6] < (fProxy)0) axisDir = -axisDir;
             halfAngle = math.abs(p[6]);
 
             p.Dispose();

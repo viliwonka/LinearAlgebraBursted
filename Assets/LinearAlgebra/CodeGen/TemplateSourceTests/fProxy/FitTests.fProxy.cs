@@ -648,6 +648,51 @@ public class fProxyFitTests
         pts.Dispose();
     }
 
+    // (d, a) and (-d, -a) parameterize the SAME cone, so a warm start whose axis points the wrong
+    // way legitimately converges with a negative angle. The report must fold that sign back into
+    // the axis: an unflipped axis names the mirror nappe, a cone touching none of the inputs.
+    [Test]
+    public void ConeWarmStartedAntiParallelReturnsTheTrueNappe()
+    {
+        const double half = 0.4;
+        double tanA = math.tan(half);
+        var pts = new NativeArray<fProxy3>(48, Allocator.Temp);
+        int k = 0;
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 8; j++)
+            {
+                double t = 1.0 + 4.0 * i / 5.0, th = 2.0 * math.PI_DBL * j / 8.0;
+                double rr = t * tanA;
+                pts[k++] = Place(new fProxy3((fProxy)(rr * math.cos(th)), (fProxy)(rr * math.sin(th)), (fProxy)t));
+            }
+
+        var wantDir = SolidRot(new fProxy3((fProxy)0, (fProxy)0, (fProxy)1));
+        var wantApex = Place(new fProxy3((fProxy)0, (fProxy)0, (fProxy)0));
+
+        fProxy3 apex = wantApex;
+        fProxy3 d = -wantDir;               // same axis LINE, wrong orientation
+        fProxy ang = (fProxy)half;
+        Assert.IsTrue(Fit.cone(pts, ref apex, ref d, ref ang), "cone fit did not converge");
+
+        // Signed alignment: AngleError's abs(dot) would pass on the mirror nappe too.
+        Assert.IsTrue(math.dot(d, wantDir) > (fProxy)0.9, "axis must point into the fitted nappe");
+        Assert.That((double)ang, Is.EqualTo(half).Within(SolidTol), "half angle");
+
+        // Distance-zero oracle: every input must lie on the REPORTED cone's surface.
+        double maxDist = 0.0;
+        for (int i = 0; i < pts.Length; i++)
+        {
+            fProxy3 v = pts[i] - apex;
+            fProxy ax = math.dot(v, d);
+            fProxy rad = math.length(v - ax * d);
+            double dist = math.abs((double)(rad * math.cos(ang) - ax * math.sin(ang)));
+            if (dist > maxDist) maxDist = dist;
+        }
+        Assert.That(maxDist, Is.EqualTo(0.0).Within(SolidTol), "every input point must lie on the reported cone");
+
+        pts.Dispose();
+    }
+
     [Test]
     public void TorusRecoversRadiiAndAxis()
     {
