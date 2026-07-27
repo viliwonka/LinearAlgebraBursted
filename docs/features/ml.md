@@ -1,6 +1,6 @@
 # ML 
 
-Namespace `LinearAlgebra.ML`.
+Namespace `BULA.ML`.
 
 ## KMeans
 

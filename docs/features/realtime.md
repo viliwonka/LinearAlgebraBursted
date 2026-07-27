@@ -1,6 +1,6 @@
 # Realtime — RollingWindow
 
-`LinearAlgebra.Realtime.floatRollingWindow` — a fixed-capacity ring buffer of feature vectors
+`BULA.Realtime.floatRollingWindow` — a fixed-capacity ring buffer of feature vectors
 (`Capacity` rows × `Features` columns), indexed oldest→newest. Allocated via
 `new floatRollingWindow(int capacity, int features, Allocator allocator)`, disposed via `.Dispose()`.
 

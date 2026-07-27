@@ -56,7 +56,7 @@ work on the library itself (templates + codegen), open the repo directly in Unit
 - [**SVD**](docs/features/svd.md): thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation
 - [**Eigensolvers**](docs/features/eigen.md): symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG
 - [**Sparse (BSR)**](docs/features/sparse-bsr.md): block-CSR storage, builder assembly, sparse solvers/eigensolvers
-- [**LP / LAD**](docs/features/lp-lad.md): linear programming (revised/dual simplex, interior-point, sparse), exact L1/quantile regression, warm-started re-solve
+- [**LP / LAD**](docs/features/lp-lad.md): linear programming (revised/dual simplex, interior-point), exact L1/quantile regression (dense or sparse design), warm-started re-solve
 - [**QP / MIP**](docs/features/qp-mip.md): convex quadratic programs (active-set), mixed-integer programs (branch & bound)
 - [**Control**](docs/features/control.md): discrete-time LQR (cold/warm/finite-horizon gain schedule)
 - [**FFT**](docs/features/fft.md): real valued rfft/irfft, complex fft/ifft, dft
@@ -175,8 +175,8 @@ Example: square 2D Laplacian, solve to tolerance = √eps, double.
 | Case | N = 1024 | N = 10201 |
 |---|---|---|
 | `Krylov.cg` no preconditioner | 101 iters, 2.8 ms | 305 iters, 310 ms |
-| `Krylov.pcg` SSOR | 30 iters, 2.1 ms | 83 iters, 227 ms |
-| `Krylov.pcg` IC(0) | 1 iter, 0.13 ms | 1 iter, 5.9 ms |
+| `Krylov.cg` SSOR-preconditioned | 30 iters, 2.1 ms | 83 iters, 227 ms |
+| `Krylov.cg` IC(0)-preconditioned | 1 iter, 0.13 ms | 1 iter, 5.9 ms |
 
 ### Programming (LP / QP / MIP)
 
@@ -212,4 +212,5 @@ Regression fitting — L2 (least squares) vs exact L1 (LAD) vs approximate L1 (I
 
 ## License
 
-[MIT](LICENSE). (except LAD code, pending permission)
+[MIT](LICENSE). Ported third-party algorithms (HiGHS, quantreg — used with permission) are
+credited in [Third Party Notices](Assets/LinearAlgebra/Source/Third%20Party%20Notices.md).

@@ -1,4 +1,4 @@
-# Control — discrete-time LQR (`LQR` in namespace `LinearAlgebra.Control`)
+# Control — discrete-time LQR (`LQR` in namespace `BULA.Control`)
 
 Infinite- and finite-horizon discrete linear-quadratic regulator: for `x_{k+1} = A x_k + B u_k`,
 finds the feedback gain `K` minimizing `Σ(xᵀQx + uᵀRu)` under `u = -Kx`, by solving the discrete

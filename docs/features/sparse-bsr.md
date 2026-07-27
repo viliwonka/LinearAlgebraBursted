@@ -1,6 +1,6 @@
 # Sparse — Block Sparse Matrix (BSR)
 
-`LinearAlgebra.Sparse`. A uniform grid of `BlockRows × BlockCols` dense blocks (each `BR × BC`),
+`BULA.Sparse`. A uniform grid of `BlockRows × BlockCols` dense blocks (each `BR × BC`),
 stored block-CSR. Vectors stay dense — no sparse vector type.
 
 ## Storage & assembly
