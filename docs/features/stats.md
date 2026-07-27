@@ -49,9 +49,3 @@ Two smaller features that live alongside Stats:
   evaluation: `Nearest`/`Linear`/`Cubic` Catmull-Rom over 4 taps), `resampleInto` (1D endpoint-
   preserving resize, point-resampling, no anti-alias prefilter), `resample2DInto` (separable 2-pass).
   `EdgeMode{Clamp, Wrap, Mirror}`.
-
-## Performance
-
-`covarianceInto` uses the row-major Gram formulation above, and the `standardizeColumns` /
-`centerColumns` / `rescaleColumns` / `maxAbsColumns` apply passes are row-major (contiguous, not
-column-strided).
