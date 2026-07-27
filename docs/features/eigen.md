@@ -71,7 +71,7 @@ The symmetric eigensolvers use Householder tridiagonalization: its O(n³) hot lo
 symmetric rank-2 update, run once, rather than the repeated strided column-rotation sweeps of a Jacobi
 solver.
 
-Ryzen 9 9950X3D, single-thread Burst, median of 9. N=1024 (`Benchmarks/EigenSvdBenchmark.cs`):
+Ryzen 9 9950X3D, single-thread Burst, median of 9. N=1024:
 
 | Method | dtype | med(ms) |
 |---|---|---|
@@ -80,7 +80,7 @@ Ryzen 9 9950X3D, single-thread Burst, median of 9. N=1024 (`Benchmarks/EigenSvdB
 | `Eigen.symmetricInPlace` (values + vectors) | float | 420.25 |
 | `Eigen.symmetricInPlace` | double | 542.04 |
 
-`Eigen.lobpcg` (`Benchmarks/LOBPCGBenchmark.cs`), dense SPD `A = MᵀM + I`, N=512, k=4 smallest,
+`Eigen.lobpcg`, dense SPD `A = MᵀM + I`, N=512, k=4 smallest,
 maxIter fixed at 50 (deterministic timing; `tol` is set near machine-epsilon so the budget is never
 met early):
 

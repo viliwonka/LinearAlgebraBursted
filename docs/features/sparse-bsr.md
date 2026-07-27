@@ -52,7 +52,7 @@ Ryzen 9 9950X3D, single-thread Burst, median of 9.
 | Square (CG/MINRES) | 33% | ~2.7–3× |
 | Rectangular (CGLS/LSQR) | 7% | ~7–8× (below the ideal ~14× — `ApplyT`'s transpose scatter is the gap) |
 
-**CG at N=1024, block size b=4 (7% fill)**, dense vs. sparse (`Benchmarks/SparseSolverBenchmark.cs`):
+**CG at N=1024, block size b=4 (7% fill)**, dense vs. sparse:
 
 | dtype | CG-dense med(ms) | CG-sparse med(ms) | speedup |
 |---|---|---|---|
@@ -62,7 +62,7 @@ Ryzen 9 9950X3D, single-thread Burst, median of 9.
 Symmetric storage (lower blocks only) is a **memory** win — ½ the footprint at ~break-even spMV
 throughput, since each stored lower block still does two block-multiplies.
 
-**Block-Jacobi PCG vs. plain CG, same BSR system** (`Benchmarks/PCGBenchmark.cs`; block-tridiagonal
+**Block-Jacobi PCG vs. plain CG, same BSR system** (block-tridiagonal
 SPD system, b=3, nb=256, N=768, K=40 fixed iterations, tol=0):
 
 | dtype | solver | med(ms) | residual |

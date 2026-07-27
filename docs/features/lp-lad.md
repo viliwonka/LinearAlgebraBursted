@@ -106,12 +106,12 @@ tau-less overload; `tau = 0.9` fits the 90th conditional percentile, and so on.
 For a fast *approximate* alternative (iteratively-reweighted least squares, no LP at all), see
 `Optimize.ladIRLS`.
 
-## Sparse (matrix-free over BSR)
+## Sparse design (LAD only)
 
-`LP.solve`/`LP.lad` accept `floatBSR`/`doubleBSR` matrices — a matrix-free Mehrotra interior point over
-[block-sparse](sparse-bsr.md) constraints. Each normal-equation solve runs through `Krylov.cg` against
-a matrix-free operator (Jacobi-preconditioned), so cost does not scale with `N²`. Interior point only
-(no simplex), reporting `Optimal`/`MaxIterations`; use dense simplex backends for exact infeasibility/unboundedness certificates.
+`LP.ladFN` accepts a [block-sparse](sparse-bsr.md) `floatBSR`/`doubleBSR` design: each interior-point
+step streams the stored blocks into the `n×n` weighted normal solve, so the row count never enters
+the factorization. LAD only — `LP.solve` takes dense constraint matrices; large-scale sparse LP is
+out of scope.
 
 ## Diagnostics
 
@@ -125,6 +125,6 @@ Every entry point returns `LPInfo` by value: `objective` (`cᵀx`, or the L1 res
 `RevisedSimplex` is fastest on cold solves and fastest at infeasibility (1-2 pivots); `DualSimplex` wins on
 warm re-solves.
 
-`LP.lad` hybrid default routes on `A.M_Rows` per dtype (`Benchmarks/LPBenchmark.cs` Section 2b):
-- **double**: `ladBR` wins through `m=4096` (2.49ms vs 2.71ms), default threshold 4096
-- **float**: `ladBR` wins through `m=384`, `ladFN` through `m=1024` (0.47ms vs 0.62ms), default threshold 512
+`LP.lad`'s hybrid default routes on `A.M_Rows` per dtype (measured crossover):
+- **double**: `ladBR` up to the default threshold `m = 4096`, `ladFN` above
+- **float**: `ladBR` up to the default threshold `m = 512`, `ladFN` above

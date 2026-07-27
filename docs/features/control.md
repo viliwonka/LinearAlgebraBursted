@@ -20,7 +20,7 @@ algebraic Riccati equation (DARE).
 
 `Q`/`R` are assumed symmetric PSD (not numerically validated); the `(R + BᵀSB)` solve routes
 through the rank-revealing `CHOP`, so a semidefinite `R` degrades to a usable minimum-norm `K`
-instead of failing. This is surfaced via `LQRInfo.rankDeficient`.
+instead of failing. This is surfaced via `RiccatiInfo.rankDeficient`.
 
 Returns `RiccatiInfo`: `iterations`, `residual` (relative Frobenius change at the last step),
 `status : RiccatiStatus` (`Converged`/`MaxIterations`/`Diverged`), `rankDeficient`. Implicit

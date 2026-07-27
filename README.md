@@ -53,7 +53,7 @@ work on the library itself (templates + codegen), open the repo directly in Unit
 - [**LA primitives**](docs/features/la-primitives.md): `Blas`/`Norms`/`Analysis`: dot, GEMM, transpose, outer product, norms, matrix metrics
 - [**Decompositions & direct solvers**](docs/features/decompositions.md): LU, CHO/CHOP, QR/QRCP, LQ/LQRP, Bidiag; direct solve (tri/LU/CHO/QR)
 - [**Solve conventions**](docs/features/solvers.md): the `decomp`/`solveInPlace` token grid, multiple right-hand sides, per-solver info structs
-- [**Least squares**](docs/features/least-squares.md): QR/QRCP/SVD routes, CGLS/LSQR/LSMR, Tikhonov damping, Jacobi preconditioning
+- [**Least squares**](docs/features/least-squares.md): QR/QRCP/SVD routes, LSQR/LSMR/CGNE, Tikhonov damping, Jacobi preconditioning
 - [**SVD**](docs/features/svd.md): thin/values/truncated-GKL/randomized, pseudo-inverse, low-rank approximation
 - [**Eigensolvers**](docs/features/eigen.md): symmetric Jacobi & Householder, non-symmetric QR, matrix-free power/inverse/Lanczos/LOBPCG
 - [**Sparse (BSR)**](docs/features/sparse-bsr.md): block-CSR storage, builder assembly, sparse solvers/eigensolvers
@@ -169,7 +169,6 @@ Sparse least squares, D = 20480×10240, 1.5% fill, float:
 | Case | Iterations | Result |
 |---|---|---|
 | `Krylov.lsqr` / `Krylov.lsmr` | 25 (converged) | 12.4 / 12.5 ms |
-| `Krylov.cgls` | 40 (fixed budget) | 19.5 ms |
 
 ### Preconditioners
 

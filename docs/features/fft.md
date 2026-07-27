@@ -57,8 +57,8 @@ deterministic; `dft`/`idft` are not.
 
 The transforms use an in-place mixed-radix (radix-4/2) core over a twiddle-table workspace, built once.
 
-Ryzen 9 9950X3D, single-thread Burst, median of 4. N=1,048,576 (2²⁰,
-`Benchmarks/FFTBenchmark.cs`); this size is memory-bandwidth-bound, so absolute ms varies a few % with
+Ryzen 9 9950X3D, single-thread Burst, median of 4. N=1,048,576 (2²⁰);
+this size is memory-bandwidth-bound, so absolute ms varies a few % with
 machine memory traffic:
 
 | Path | dtype | med(ms) |

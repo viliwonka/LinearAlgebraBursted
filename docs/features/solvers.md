@@ -46,7 +46,7 @@ Block solves reuse each factor entry across all `k` right-hand sides: each subst
 axpy across the block, and `QᵀB` / `UᵀB` become GEMMs (level-3 BLAS). Results match the column-by-column
 vector solve to summation-order rounding.
 
-**Speedup: fused `solveInPlace` vs. looping per-RHS** (`Benchmarks/MultiRhsSolveBenchmark.cs`, N=512 square, float, Ryzen 9 9950X3D, Burst single-thread).
+**Speedup: fused `solveInPlace` vs. looping per-RHS** (N=512 square, float, Ryzen 9 9950X3D, Burst single-thread).
 The fused `solveInPlace` factors once and solves all `k` RHS together (cost ≈ factor + `k` · solve). Looping the one-call API re-factors each time (cost = `k` · (factor + solve)):
 
 | solver | 1-RHS `solveInPlace` (ms) | block, k=16 | block, k=64 | block, k=256 | speedup @ k=256 |
@@ -90,7 +90,7 @@ Eigensolvers follow this same convention with their own structs (`EigenSolveInfo
 See [decompositions.md](decompositions.md) for the factorization costs each solve is built on. The
 triangular-solve step itself is O(n²) and dominated by the O(n³) factorization in every case.
 
-End-to-end "solve `Ax=b`" (`Benchmarks/DirectSolveBenchmark.cs`), square N=1024. LU and CHO time the
+End-to-end "solve `Ax=b`", square N=1024. LU and CHO time the
 explicit `decomp`+`decompSolve` composition (A preserved, distinct from L/U); QR times the fused
 `solveInPlace` (A and b destroyed). Ryzen 9 9950X3D, single-thread Burst, median of 9:
 
